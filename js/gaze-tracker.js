@@ -1,5 +1,8 @@
 import { logToUI } from "./script.js";
 
+// store the most recent gaze data so other modules can read it on demand
+export let currentGaze = null;
+
 // create a hidden lower quality webcam feed canvas 
 // to help the model process the data
 const aiCanvas = document.createElement('canvas');
@@ -82,7 +85,10 @@ export function initGazeDataExtract(videoElement, detector, onTrackingStarted) {
             const normalizedRY = rightPupil.y / aiCanvas.height;
             const normalizedLX = leftPupil.x / aiCanvas.width;
             const normalizedLY = leftPupil.y / aiCanvas.height;
-            
+
+            // update the global state with latest gaze data
+            currentGaze = [normalizedRX, normalizedRY, normalizedLX, normalizedLY];
+
             if (!hasTrackingStarted && onTrackingStarted) {
                 hasTrackingStarted = true;
                 onTrackingStarted();

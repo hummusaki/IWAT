@@ -1,5 +1,5 @@
 import { initWebcam, initDetector, initGazeDataExtract } from './gaze-tracker.js';
-import { setupCalibration, showCalibration } from './calibration.js';
+import { startCalibration, showCalibration } from './calibration.js';
 
 // Elements
 const logsContainer = document.getElementById('ai-logs');
@@ -45,10 +45,10 @@ async function setupTracking() {
 
     // initialize MediaPipe gaze tracking with the video feed and detector
     initGazeDataExtract(videoElement, detector, showCalibration);
+    startCalibration();
 }
 
 // Start
 document.addEventListener('DOMContentLoaded', async () => {
-    setupCalibration();
     await setupTracking();
 });
