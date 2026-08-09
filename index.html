@@ -33,6 +33,18 @@
             <!-- AI Output Logs -->
             <div class="log-container">
                 <h3>System Logs</h3>
+                
+                <!-- Training Progress Bar -->
+                <div id="training-progress-container" style="display: none; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px; color: #888;">
+                        <span>Training Model...</span>
+                        <span id="training-progress-text">0%</span>
+                    </div>
+                    <div style="width: 100%; background: #333; height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div id="training-progress-bar" style="width: 0%; background: #34c759; height: 100%; border-radius: 4px; transition: width 0.1s;"></div>
+                    </div>
+                </div>
+
                 <div id="ai-logs" class="logs"></div>
             </div>
 

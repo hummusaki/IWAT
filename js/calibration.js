@@ -9,6 +9,20 @@ let overlay;
 let completedDots = 0;
 const totalDots = 12;
 
+export function checkExistingCalibration() {
+    const x = localStorage.getItem('calibration_x_train');
+    const y = localStorage.getItem('calibration_y_train');
+    if (x && y) {
+        return [JSON.parse(x), JSON.parse(y)];
+    }
+    return null;
+}
+
+export async function checkExistingModel() {
+    const models = await tf.io.listModels();
+    return models['localstorage://IWAT-gaze-model'] != null;
+}
+
 export async function startCalibration() {
     return new Promise(async (resolve, reject) => {
         overlay = document.getElementById('calibration-overlay');
@@ -32,7 +46,7 @@ export async function startCalibration() {
                 let clickCount = 0;
 
                 // handle click event for each dot
-                dot.addEventListener('click', function () {
+                dot.addEventListener('click', async function () {
                     if (!this.classList.contains('completed')) {
                         clickCount++;
                         this.textContent = clickCount;
@@ -56,7 +70,13 @@ export async function startCalibration() {
                                 console.log("Collected Calibration Data:");
                                 console.log("X_Train (Iris Coords):", x_train);
                                 console.log("Y_Train (Screen %):", y_train);
-                                completeCalibration();
+
+                                // save to local storage
+                                localStorage.setItem('calibration_x_train', JSON.stringify(x_train));
+                                localStorage.setItem('calibration_y_train', JSON.stringify(y_train));
+
+                                await completeCalibration();
+                                resolve([x_train, y_train]); // correctly resolve here with the populated arrays
                             }
                         }
                     }
@@ -66,7 +86,6 @@ export async function startCalibration() {
                 overlay.appendChild(dot);
             }
         }
-        resolve(x_train, y_train);
     })
 
 }
@@ -80,13 +99,18 @@ export function showCalibration() {
 }
 
 function completeCalibration() {
-    setTimeout(() => {
-        if (overlay) {
-            overlay.style.opacity = '0';
-            setTimeout(() => {
-                overlay.style.display = 'none';
-                logToUI('Calibration complete.', true);
-            }, 500); // match transition time in css
-        }
-    }, 500); // slight delay before disappearing
+    return new Promise((resolveTimer) => {
+        setTimeout(() => {
+            if (overlay) {
+                overlay.style.opacity = '0';
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    logToUI('Calibration complete.');
+                    resolveTimer();
+                }, 500); // match transition time in css
+            } else {
+                resolveTimer();
+            }
+        }, 500); // slight delay before disappearing
+    });
 }
