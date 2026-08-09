@@ -75,11 +75,11 @@ export function initGazeDataExtract(videoElement, detector) {
             const rightPupil = faces[0].keypoints[468];
             const leftPupil = faces[0].keypoints[473];
 
-            // avg and normalize 0.0 to 1.0
-            const avgX = (rightPupil.x + leftPupil.x) / 2;
-            const avgY = (rightPupil.y + leftPupil.y) / 2;
-            const normalizedX = avgX / aiCanvas.width;
-            const normalizedY = avgY / aiCanvas.height;
+            // avg and normalize 0.0 to 1.0;
+            const normalizedRX = rightPupil.x / aiCanvas.width;
+            const normalizedRY = rightPupil.y / aiCanvas.height;
+            const normalizedLX = leftPupil.x / aiCanvas.width;
+            const normalizedLY = leftPupil.y / aiCanvas.height;
         }
 
         requestAnimationFrame(trackingLoop);
