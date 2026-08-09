@@ -1,4 +1,4 @@
-import { initEngine } from './gaze-tracker.js';
+import { initWebcam, initDetector, initGazeDataExtract } from './gaze-tracker.js';
 
 // Elements
 const logsContainer = document.getElementById('ai-logs');
@@ -15,7 +15,7 @@ export function logToUI(message, isAction = false) {
     const msgSpan = document.createElement('span');
     if (isAction) {
         msgSpan.className = 'log-action';
-        msgSpan.textContent = `⚡ ACTION: ${message}`;
+        msgSpan.textContent = `ACTION: ${message}`;
     } else {
         msgSpan.textContent = message;
     }
@@ -28,27 +28,25 @@ export function logToUI(message, isAction = false) {
     logsContainer.scrollTop = logsContainer.scrollHeight;
 }
 
-import { initWebcam } from './gaze-tracker.js';
-
-// Set up the gaze-tracking ML Engine
-async function setupEngine() {
-    logToUI('Initializing Eye Tracker...');
+// Set up gaze-tracking for ML Engine
+async function setupTracking() {
+    logToUI('Initializing Eye Tracking...', true);
 
     // initialize video feed
     const videoElement = await initWebcam();
     logToUI('Webcam feed is running.');
-    logToUI('Initializing ML model...')
+    logToUI('Initializing detector...')
 
     // initialize detector that will be the the main pipeline
     const detector = await initDetector();
-    logToUI('Model loaded.');
+    logToUI('Detector loaded.');
     logToUI('Starting to track...');
 
-    // initialize the ML engine with the video feed and detector
-    initEngine(videoElement, detector);
+    // initialize MediaPipe gaze tracking with the video feed and detector
+    initGazeDataExtract(videoElement, detector);
 }
 
 // Start
 document.addEventListener('DOMContentLoaded', async () => {
-    await setupEngine();
+    await setupTracking();
 });

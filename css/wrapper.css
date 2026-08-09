@@ -141,11 +141,12 @@ body {
 }
 
 .log-container {
-    flex-grow: 1;
+    flex: 1 1 0; /* Shorthand for grow: 1, shrink: 1, basis: 0 */
     display: flex;
     flex-direction: column;
     padding: 15px;
     overflow: hidden;
+    min-height: 0; /* Prevents the container from stretching past the screen height */
 }
 
 .log-container h3 {
@@ -157,13 +158,14 @@ body {
 }
 
 .logs {
-    flex-grow: 1;
+    flex: 1 1 0; /* Shorthand for grow: 1, shrink: 1, basis: 0 */
     overflow-y: auto;
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
     font-size: 12px;
     line-height: 1.6;
     color: #9cdcfe;
     padding-right: 5px;
+    min-height: 0; /* Also crucial for nested flex children! */
 }
 
 .logs div {

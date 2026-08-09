@@ -30,6 +30,7 @@ export async function initWebcam() {
             // Wait for the video to be loaded and ready to play
             videoElement.onloadedmetadata = () => {
                 videoElement.play();
+                resolve(videoElement);
             };
         } catch (err) {
             logToUI(`Camera Error: ${err.message}`);
@@ -52,8 +53,7 @@ export async function initDetector() {
         };
 
         // downloading and initializing the model
-        detector = await faceLandmarksDetection.createDetector(model, detectorConfig);
-        return detector;
+        return await faceLandmarksDetection.createDetector(model, detectorConfig);
 
     } catch (err) {
         logToUI(`Detector Error: ${err.message}`);
@@ -61,9 +61,8 @@ export async function initDetector() {
     }
 }
 
-export function initEngine(videoElement, detector) {
-
-    // animation loop (60hz)
+export function initGazeDataExtract(videoElement, detector) {
+    // animation loop
     async function trackingLoop() {
         // draw image onto smaller canvas to help with processing
         ctx.drawImage(videoElement, 0, 0, aiCanvas.width, aiCanvas.height);
@@ -72,9 +71,19 @@ export function initEngine(videoElement, detector) {
         const faces = await detector.estimateFaces(aiCanvas);
 
         if (faces.length > 0) {
+            // placeholder log message
+            const rightPupil = faces[0].keypoints[468];
+            const leftPupil = faces[0].keypoints[473];
 
+            // avg and normalize 0.0 to 1.0
+            const avgX = (rightPupil.x + leftPupil.x) / 2;
+            const avgY = (rightPupil.y + leftPupil.y) / 2;
+            const normalizedX = avgX / aiCanvas.width;
+            const normalizedY = avgY / aiCanvas.height;
         }
 
+        requestAnimationFrame(trackingLoop);
     }
 
+    trackingLoop();
 }
