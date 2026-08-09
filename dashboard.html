@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IWAT - Accessibility Testing</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <div class="dashboard-container">
+
+        <!-- Nonsensical Sidebar -->
+        <div class="sidebar">
+            <div class="nav-group">
+                <a href="#" class="nav-item">Analytics Hub (v2)</a>
+                <a href="#" class="nav-item">Data Processing Configs</a>
+                <a href="#" class="nav-item">Legacy Data (Deprecated)</a>
+                <a href="#" class="nav-item">User Telemetry</a>
+            </div>
+            <div class="nav-group">
+                <a href="#" class="nav-item">Cloud Integration Setup</a>
+                <a href="#" class="nav-item">Auth Providers</a>
+                <a href="#" class="nav-item">Billing & Metrics</a>
+            </div>
+            <div class="nav-group">
+                <a href="#" class="nav-item">Settings</a>
+                <a href="#" class="nav-item">Advanced Preferences</a>
+                <a href="#" class="nav-item">Developer Console</a>
+            </div>
+            <div class="blinking-alert">System Warning: Node 84 offline.</div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="top-bar">
+                <span>Account ID: 89432-XYZ</span>
+                <span>Region: us-east-1</span>
+                <span>Help</span>
+                <span>Logout</span>
+            </div>
+
+            <div class="content-body">
+                <h3>Global Server Utilization Matrix</h3>
+
+                <!-- Dense Data Table with Color-only indicators -->
+                <table class="dense-table">
+                    <thead>
+                        <tr>
+                            <th>Instance ID</th>
+                            <th>Status</th>
+                            <th>CPU %</th>
+                            <th>RAM %</th>
+                            <th>Network I/O</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>srv-cluster-a-01</td>
+                            <td><span class="status-indicator status-good"></span></td>
+                            <td>12.4%</td>
+                            <td>45.1%</td>
+                            <td>1.2 GB/s</td>
+                            <td class="action-buttons">
+                                <button class="btn btn-primary"></button>
+                                <button class="btn btn-danger"></button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>srv-cluster-a-02</td>
+                            <td><span class="status-indicator status-bad"></span></td>
+                            <td>99.9%</td>
+                            <td>98.2%</td>
+                            <td>0.1 GB/s</td>
+                            <td class="action-buttons">
+                                <button class="btn btn-primary"></button>
+                                <button class="btn btn-danger"></button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>srv-cluster-a-03</td>
+                            <td><span class="status-indicator status-good"></span></td>
+                            <td>45.0%</td>
+                            <td>60.0%</td>
+                            <td>2.4 GB/s</td>
+                            <td class="action-buttons">
+                                <button class="btn btn-primary"></button>
+                                <button class="btn btn-danger"></button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>db-node-primary</td>
+                            <td><span class="status-indicator status-good"></span></td>
+                            <td>88.1%</td>
+                            <td>72.5%</td>
+                            <td>5.5 GB/s</td>
+                            <td class="action-buttons">
+                                <button class="btn btn-primary"></button>
+                                <button class="btn btn-danger"></button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <br>
+                <h3>Configuration Overrides</h3>
+                <!-- Cluttered Form Panel -->
+                <div class="settings-panel">
+                    <div class="form-group">
+                        <label>Max Thread Count</label>
+                        <input type="text" value="1024">
+                    </div>
+                    <div class="form-group">
+                        <label>Memory Limit (MB)</label>
+                        <input type="text" value="8192">
+                    </div>
+                    <div class="form-group">
+                        <label>Fallback Strategy</label>
+                        <select>
+                            <option>Route to failover</option>
+                            <option>Drop packets</option>
+                            <option>Queue (unbounded)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Aggressive Caching</label>
+                        <input type="checkbox">
+                    </div>
+
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-primary" style="margin-right: 5px;">Save</button>
+                        <button class="btn btn-danger">Revert</button>
+                    </div>
+                </div>
+
+                <div style="font-size: 8px; color: #d0d0d0; margin-top: 20px;">
+                    Confidential. Do not distribute. All configurations are subject to automated overwrite by the
+                    central policy daemon.
+                    If you experience errors, consult manual section 4.B paragraph 12.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load dashboard specific dummy interactivity -->
+    <script src="js/dashboard.js"></script>
+</body>
+
+</html>

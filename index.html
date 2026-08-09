@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IWAT - Testing Environment</title>
+    <link rel="stylesheet" href="css/wrapper.css">
+</head>
+
+<body>
+    <div class="wrapper-container">
+
+        <!-- Left 70%: Test Panel -->
+        <div class="test-panel">
+            <iframe id="test-iframe" src="dashboard.html" frameborder="0"></iframe>
+        </div>
+
+        <!-- Right 30%: Control Panel -->
+        <div class="control-panel">
+            <!-- Webcam Preview -->
+            <div id="webcam-container" class="webcam-container">
+                <video id="webcam-video" autoplay playsinline></video>
+                <div class="overlay-text">Camera Feed</div>
+            </div>
+
+            <div class="project-info-container">
+                <p>Learn more about this project <a href="https://github.com/hummusaki/IWAT" target="_blank"
+                        rel="noopener noreferrer">here</a>
+                </p>
+            </div>
+
+            <!-- AI Output Logs -->
+            <div class="log-container">
+                <h3>System Logs</h3>
+                <div id="ai-logs" class="logs"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Wrapper Script (ML Engine) -->
+    <script type="module" src="js/script.js"></script>
+    <!-- TensorFlow.js core and backend -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@latest"></script>
+</body>
+
+</html>

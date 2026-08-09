@@ -1,0 +1,170 @@
+/* style.css - Intentional Accessibility Nightmares */
+
+* {
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #fcfcfc;
+    color: #b0b0b0; /* Low contrast text */
+    font-size: 11px; /* Tiny font size */
+    overflow-x: hidden;
+}
+
+/* Cluttered, cramped layout */
+.dashboard-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* Nonsensical Sidebar */
+.sidebar {
+    width: 250px;
+    background-color: #f0f0f0;
+    border-right: 1px solid #e0e0e0;
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar .nav-group {
+    margin-bottom: 2px;
+}
+
+.sidebar .nav-item {
+    padding: 4px 8px;
+    cursor: pointer;
+    color: #999; /* Even lower contrast for links */
+    text-decoration: none;
+    display: block;
+}
+
+.sidebar .nav-item:hover {
+    background-color: #e5e5e5;
+}
+
+/* Main Content Area */
+.main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.top-bar {
+    height: 40px;
+    background-color: #ffffff;
+    border-bottom: 1px solid #eaeaea;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 10px;
+    gap: 15px;
+}
+
+.content-body {
+    padding: 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Dense Data Table */
+table.dense-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+table.dense-table th, table.dense-table td {
+    border: 1px solid #ddd;
+    padding: 2px 4px; /* Almost no padding */
+    text-align: left;
+    white-space: nowrap; /* Forces horizontal scrolling or clipping */
+}
+
+table.dense-table th {
+    background-color: #fafafa;
+    font-weight: normal;
+    color: #a0a0a0;
+}
+
+/* Color-reliant indicators (Bad for Color Blindness) */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.status-good {
+    background-color: #28a745; /* Pure green */
+}
+
+.status-bad {
+    background-color: #dc3545; /* Pure red */
+}
+
+/* Confusing Action Buttons */
+.action-buttons {
+    display: flex;
+    gap: 5px;
+}
+
+.btn {
+    border: none;
+    padding: 4px 10px;
+    cursor: pointer;
+    color: white;
+    font-size: 10px;
+}
+
+.btn-primary {
+    background-color: #28a745; /* Meaning implied only by color */
+}
+
+.btn-danger {
+    background-color: #dc3545; /* Meaning implied only by color */
+}
+
+/* Overwhelming Form Section */
+.settings-panel {
+    border: 1px solid #eee;
+    padding: 8px;
+    background-color: #fff;
+}
+
+.form-group {
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+}
+
+.form-group label {
+    width: 120px;
+    color: #c0c0c0; /* Terrible contrast */
+}
+
+.form-group input, .form-group select {
+    border: 1px solid #ccc;
+    padding: 2px;
+    font-size: 10px;
+    color: #999;
+}
+
+/* Distracting animations (Cognitive Overload) */
+.blinking-alert {
+    animation: blinker 1s linear infinite;
+    color: #ff0000;
+    font-size: 9px;
+}
+
+@keyframes blinker {
+    50% {
+        opacity: 0;
+    }
+}
