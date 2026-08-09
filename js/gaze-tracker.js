@@ -61,7 +61,9 @@ export async function initDetector() {
     }
 }
 
-export function initGazeDataExtract(videoElement, detector) {
+export function initGazeDataExtract(videoElement, detector, onTrackingStarted) {
+    let hasTrackingStarted = false;
+
     // animation loop
     async function trackingLoop() {
         // draw image onto smaller canvas to help with processing
@@ -80,6 +82,11 @@ export function initGazeDataExtract(videoElement, detector) {
             const normalizedRY = rightPupil.y / aiCanvas.height;
             const normalizedLX = leftPupil.x / aiCanvas.width;
             const normalizedLY = leftPupil.y / aiCanvas.height;
+            
+            if (!hasTrackingStarted && onTrackingStarted) {
+                hasTrackingStarted = true;
+                onTrackingStarted();
+            }
         }
 
         requestAnimationFrame(trackingLoop);
