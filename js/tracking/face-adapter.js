@@ -2,7 +2,7 @@
 
 import { logToUI } from '../logger.js';
 
-/**
+/** jsdoc
  * common FaceAdapter Interface
  * @typedef {Object} FaceKeypoint
  * @property {number} x
