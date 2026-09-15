@@ -18,30 +18,88 @@
 
         <!-- Right 30%: Control Panel -->
         <div class="control-panel">
-            <!-- Webcam Preview -->
+            <!-- Webcam Preview & Landmark Overlay -->
             <div id="webcam-container" class="webcam-container">
                 <video id="webcam-video" autoplay playsinline></video>
-                <div class="overlay-text">Camera Feed</div>
+                <canvas id="webcam-overlay" class="webcam-overlay"></canvas>
+                <div class="overlay-text" id="camera-status-text">Camera: Initializing</div>
             </div>
 
+            <!-- Camera & Pipeline Action Controls -->
+            <div class="camera-controls-container">
+                <button id="retry-camera-btn" class="control-action-btn" style="display: none;">Retry Camera</button>
+                <button id="no-camera-btn" class="control-action-btn secondary" style="display: none;">No-Camera Mode</button>
+                <div class="toggle-control">
+                    <label>
+                        <input type="checkbox" id="toggle-landmarks-checkbox" checked>
+                        <span>Show Landmark Mesh</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Live Diagnostics HUD -->
+            <div class="diagnostics-panel">
+                <div class="diagnostics-header">
+                    <h4>Telemetry Diagnostics</h4>
+                    <span id="diag-state" class="status-badge">Initializing</span>
+                </div>
+                <div class="diagnostics-grid">
+                    <div class="diag-item">
+                        <span class="diag-label">Latency:</span>
+                        <span id="diag-latency" class="diag-value">-- ms</span>
+                    </div>
+                    <div class="diag-item">
+                        <span class="diag-label">Frame Age:</span>
+                        <span id="diag-frame-age" class="diag-value">-- ms</span>
+                    </div>
+                    <div class="diag-item">
+                        <span class="diag-label">Video FPS:</span>
+                        <span id="diag-fps" class="diag-value">-- fps</span>
+                    </div>
+                    <div class="diag-item">
+                        <span class="diag-label">Coverage (5s):</span>
+                        <span id="diag-coverage" class="diag-value">-- %</span>
+                    </div>
+                    <div class="diag-item">
+                        <span class="diag-label">EAR (Openness):</span>
+                        <span id="diag-ear" class="diag-value">--</span>
+                    </div>
+                    <div class="diag-item">
+                        <span class="diag-label">Blink Rate:</span>
+                        <span id="diag-blinks" class="diag-value">--/m</span>
+                    </div>
+                    <div class="diag-item">
+                        <span class="diag-label">Active Tensors:</span>
+                        <span id="diag-tensors" class="diag-value">--</span>
+                    </div>
+                    <div class="diag-item">
+                        <span class="diag-label">Dropped Fr.:</span>
+                        <span id="diag-dropped" class="diag-value">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calibration & Benchmark Controls -->
             <div class="project-info-container">
-                <p>Learn more about this project <a href="https://github.com/hummusaki/IWAT" target="_blank"
-                        rel="noopener noreferrer">here</a>
-                </p>
+                <div class="button-row">
+                    <button id="reset-calibration-btn" class="reset-btn">Reset Calibration</button>
+                    <button id="run-benchmark-btn" class="benchmark-btn">Face Benchmark</button>
+                </div>
+                <p class="footnote">Learn more about <a href="https://github.com/hummusaki/IWAT" target="_blank" rel="noopener noreferrer">IWAT</a></p>
             </div>
 
             <!-- AI Output Logs -->
             <div class="log-container">
                 <h3>System Logs</h3>
-                
+
                 <!-- Training Progress Bar -->
-                <div id="training-progress-container" style="display: none; margin-bottom: 15px;">
+                <div id="training-progress-container" style="display: none; margin-bottom: 12px;">
                     <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px; color: #888;">
-                        <span>Training Model...</span>
+                        <span>Training Gaze Regression...</span>
                         <span id="training-progress-text">0%</span>
                     </div>
-                    <div style="width: 100%; background: #333; height: 8px; border-radius: 4px; overflow: hidden;">
-                        <div id="training-progress-bar" style="width: 0%; background: #34c759; height: 100%; border-radius: 4px; transition: width 0.1s;"></div>
+                    <div style="width: 100%; background: #333; height: 6px; border-radius: 3px; overflow: hidden;">
+                        <div id="training-progress-bar" style="width: 0%; background: #34c759; height: 100%; border-radius: 3px; transition: width 0.1s;"></div>
                     </div>
                 </div>
 
@@ -55,17 +113,35 @@
     <div id="calibration-overlay" style="display: none;">
         <div class="calibration-instructions">
             <h2>Calibration Required</h2>
-            <p>Please look at each red dot and click it 5 times to calibrate.</p>
+            <p>Please look at each red dot and click it 5 times while keeping your head stable.</p>
         </div>
         <!-- dots will be generated here -->
     </div>
 
+    <!-- Benchmark Results Modal -->
+    <div id="benchmark-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Face Adapter Benchmark Suite</h3>
+                <span id="modal-close-icon" class="modal-close">&times;</span>
+            </div>
+            <div id="benchmark-progress" class="benchmark-status">Initializing benchmark...</div>
+            <div id="benchmark-modal-body" class="modal-body">
+                <p>Loading benchmark data...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gaze Cursor -->
+    <div id="gaze-pointer"></div>
+
+    <!-- Pinned TensorFlow.js and MediaPipe Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"></script>
+
     <!-- Wrapper Script (ML Engine) -->
     <script type="module" src="js/script.js"></script>
-    <!-- TensorFlow.js core and backend -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-    <!-- MediaPipe -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@latest"></script>
 </body>
 
 </html>
