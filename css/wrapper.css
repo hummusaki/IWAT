@@ -379,8 +379,39 @@ body {
     background-color: #34c759;
     border-color: #a8ffb2;
     box-shadow: 0 0 12px rgba(52, 199, 89, 0.7);
-    cursor: default;
     transform: scale(1);
+}
+
+.calibration-dot.waiting-click {
+    cursor: pointer;
+    background-color: #ff3b30;
+    border-color: #ffffff;
+    box-shadow: 0 0 16px rgba(255, 59, 48, 0.85);
+    animation: calib-pulse 1.2s infinite ease-in-out;
+}
+
+.calibration-dot.waiting-click:hover {
+    transform: scale(1.15);
+    background-color: #ff5247;
+    box-shadow: 0 0 24px rgba(255, 59, 48, 1);
+}
+
+.calibration-dot.settling {
+    background-color: #feca57;
+    border-color: #ffffff;
+    color: #000;
+    box-shadow: 0 0 14px rgba(254, 202, 87, 0.8);
+    cursor: default;
+    animation: none;
+}
+
+.calibration-dot.collecting {
+    background-color: #34c759;
+    border-color: #ffffff;
+    color: #000;
+    box-shadow: 0 0 20px rgba(52, 199, 89, 0.9);
+    cursor: default;
+    animation: none;
 }
 
 /* Sequential calibration overlay controls */

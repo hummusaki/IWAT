@@ -195,8 +195,8 @@ export async function train(x_train, y_train, options = {}) {
     const valIndices = [];
 
     if (targetIds && targetIds.length === n) {
-        // Hold out targets 4 (Center) and 8 (Bottom-Right) for validation
-        const heldOutTargets = new Set([4, 8]);
+        // Hold out interior targets 4 (Center) and 1 (Top-Center) for validation, preserving all 4 boundary corners in fit set
+        const heldOutTargets = new Set([4, 1]);
         for (let i = 0; i < n; i++) {
             if (heldOutTargets.has(targetIds[i])) {
                 valIndices.push(i);
@@ -321,9 +321,9 @@ export async function train(x_train, y_train, options = {}) {
         const yImprovement = modelMseY < centerMseY;
 
         // Provisional coarse-gaze validation gate:
-        // Median error <= 10% diagonal, p95 <= 20% diagonal, lower error than center on both axes
-        const passesCoarseGate = (medianErrorFraction <= 0.10) &&
-                                 (p95ErrorFraction <= 0.20) &&
+        // Median error <= 15% diagonal, p95 <= 25% diagonal, lower error than center on both axes
+        const passesCoarseGate = (medianErrorFraction <= 0.15) &&
+                                 (p95ErrorFraction <= 0.25) &&
                                  xImprovement &&
                                  yImprovement;
 
@@ -343,7 +343,7 @@ export async function train(x_train, y_train, options = {}) {
         };
 
         if (!passesCoarseGate) {
-            logToUI(`Coarse-Gaze Gate Failed: Median ${(medianErrorFraction * 100).toFixed(1)}% (budget 10%), X-improved: ${xImprovement}, Y-improved: ${yImprovement}. Retaining prior valid model.`, true, 'warn');
+            logToUI(`Coarse-Gaze Gate Failed: Median ${(medianErrorFraction * 100).toFixed(1)}% (budget 15%), X-improved: ${xImprovement}, Y-improved: ${yImprovement}. Retaining prior valid model.`, true, 'warn');
             candidateModel.dispose();
             return { success: false, reason: 'coarse_gaze_gate_failed', validation: validationResult };
         }

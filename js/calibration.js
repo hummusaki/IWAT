@@ -318,35 +318,45 @@ export async function startCalibration(options = {}) {
         topBar.className = 'calibration-top-bar';
         topBar.innerHTML = `
             <div class="calibration-status-header">
-                <span id="calib-target-label">Target 1 of 9</span>
-                <span id="calib-stage-badge" class="calib-badge">Settling...</span>
+                <span id="calib-target-label">Calibration Setup</span>
+                <span id="calib-stage-badge" class="calib-badge">Ready</span>
             </div>
             <div class="calibration-actions">
-                <button id="calib-retry-target-btn" class="calib-ctrl-btn">Retry Target</button>
+                <button id="calib-retry-target-btn" class="calib-ctrl-btn" style="display: none;">Retry Target</button>
                 <button id="calib-cancel-btn" class="calib-ctrl-btn secondary">Cancel</button>
             </div>
         `;
         overlay.appendChild(topBar);
 
-        // center instructions container
+        // Center instructions / confirmation prompt card
         const instructions = document.createElement('div');
         instructions.className = 'calibration-instructions';
+        instructions.id = 'calib-instructions-card';
+        instructions.style.pointerEvents = 'auto';
         instructions.innerHTML = `
-            <h2>Sequential Fixation Calibration</h2>
-            <p id="calib-instruction-text">Look directly at the pulsating dot. Stay steady while samples are collected automatically.</p>
+            <h2>Eye Tracking Calibration</h2>
+            <p style="margin-bottom: 12px;">You will calibrate 9 fixation points across your screen.</p>
+            <p style="margin-bottom: 16px; color: #9cdcfe; line-height: 1.5;">Keep your head steady. For each point, look directly at the dot and <strong>click it</strong> (or press <strong>Space</strong>) when your eyes are focused on it. Hold your gaze steady for 1 second while samples are recorded.</p>
+            <div style="display: flex; justify-content: center; gap: 12px; margin-top: 18px;">
+                <button id="calib-begin-btn" class="calib-ctrl-btn" style="padding: 10px 24px; font-size: 14px; background: #34c759; color: #000; font-weight: bold; cursor: pointer;">Start Calibration</button>
+                <button id="calib-cancel-initial-btn" class="calib-ctrl-btn secondary" style="padding: 10px 18px; font-size: 14px; cursor: pointer;">Cancel</button>
+            </div>
         `;
         overlay.appendChild(instructions);
 
-        // Fixation Target Dot
+        // Fixation Target Dot (initially hidden until user clicks Start Calibration)
         const targetDot = document.createElement('div');
-        targetDot.className = 'calibration-dot active-target';
-        targetDot.innerHTML = '<span id="dot-progress">0/15</span>';
+        targetDot.className = 'calibration-dot active-target waiting-click';
+        targetDot.style.display = 'none';
+        targetDot.innerHTML = '<span id="dot-progress" style="font-size: 10px; font-weight: bold;">CLICK</span>';
         overlay.appendChild(targetDot);
 
         let currentTargetIndex = 0;
         let isCancelled = false;
-        let isSettling = true;
-        let targetStartTime = performance.now();
+        let isWaitingForTrigger = true;
+        let isSettling = false;
+        let isCollecting = false;
+        let targetStartTime = 0;
         let targetSamples = [];
         let targetFrameIds = [];
         let targetTimestamps = [];
@@ -358,7 +368,18 @@ export async function startCalibration(options = {}) {
         const allTargetIds = [];
         const allFrameIds = [];
 
+        function onKeydown(e) {
+            if (e.code === 'Space' || e.code === 'Enter') {
+                e.preventDefault();
+                triggerTargetCollection();
+            } else if (e.code === 'Escape') {
+                cancel();
+            }
+        }
+        window.addEventListener('keydown', onKeydown);
+
         function cleanupSession() {
+            window.removeEventListener('keydown', onKeydown);
             if (checkTimer) {
                 clearInterval(checkTimer);
                 checkTimer = null;
@@ -385,6 +406,39 @@ export async function startCalibration(options = {}) {
             if (isCancelled) return;
             const target = TARGET_GRID[index];
             currentTargetIndex = index;
+            isWaitingForTrigger = true;
+            isSettling = false;
+            isCollecting = false;
+            targetSamples = [];
+            targetFrameIds = [];
+            targetTimestamps = [];
+            lastCollectedFrameId = -1;
+
+            targetDot.style.display = 'flex';
+            targetDot.style.left = `calc(${target.x}% - 24px)`;
+            targetDot.style.top = `calc(${target.y}% - 24px)`;
+            targetDot.className = 'calibration-dot active-target waiting-click';
+            targetDot.innerHTML = '<span id="dot-progress" style="font-size: 10px; font-weight: bold;">CLICK</span>';
+            targetDot.style.borderColor = '#fff';
+
+            const targetLabel = document.getElementById('calib-target-label');
+            if (targetLabel) targetLabel.textContent = `Target ${index + 1} of ${TARGET_GRID.length} (${target.label})`;
+
+            const stageBadge = document.getElementById('calib-stage-badge');
+            if (stageBadge) {
+                stageBadge.className = 'calib-badge';
+                stageBadge.textContent = 'Click Dot or Space';
+                stageBadge.style.backgroundColor = '#feca57';
+                stageBadge.style.color = '#000';
+            }
+
+            const retryBtn = topBar.querySelector('#calib-retry-target-btn');
+            if (retryBtn) retryBtn.style.display = 'inline-block';
+        }
+
+        function triggerTargetCollection() {
+            if (isCancelled || !isWaitingForTrigger) return;
+            isWaitingForTrigger = false;
             isSettling = true;
             targetStartTime = performance.now();
             targetSamples = [];
@@ -392,22 +446,23 @@ export async function startCalibration(options = {}) {
             targetTimestamps = [];
             lastCollectedFrameId = -1;
 
-            targetDot.style.left = `calc(${target.x}% - 24px)`;
-            targetDot.style.top = `calc(${target.y}% - 24px)`;
             targetDot.className = 'calibration-dot active-target settling';
-
-            const targetLabel = document.getElementById('calib-target-label');
-            if (targetLabel) targetLabel.textContent = `Target ${index + 1} of ${TARGET_GRID.length} (${target.label})`;
+            const dotProgress = document.getElementById('dot-progress');
+            if (dotProgress) dotProgress.textContent = 'Hold';
 
             const stageBadge = document.getElementById('calib-stage-badge');
             if (stageBadge) {
-                stageBadge.textContent = 'Focusing...';
-                stageBadge.style.color = '#00d2d3';
+                stageBadge.className = 'calib-badge';
+                stageBadge.textContent = 'Settling...';
+                stageBadge.style.backgroundColor = '#00d2d3';
+                stageBadge.style.color = '#000';
             }
-
-            const dotProgress = document.getElementById('dot-progress');
-            if (dotProgress) dotProgress.textContent = 'Focus';
         }
+
+        targetDot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerTargetCollection();
+        });
 
         function retryCurrentTarget() {
             logToUI(`Retrying target ${currentTargetIndex + 1}...`, false, 'info');
@@ -421,39 +476,51 @@ export async function startCalibration(options = {}) {
         const retryBtn = topBar.querySelector('#calib-retry-target-btn');
         if (retryBtn) retryBtn.addEventListener('click', retryCurrentTarget);
 
-        activeCalibrationSession = { cancel, retry: retryCurrentTarget };
+        const beginBtn = instructions.querySelector('#calib-begin-btn');
+        if (beginBtn) {
+            beginBtn.addEventListener('click', () => {
+                instructions.style.display = 'none';
+                setupTarget(0);
+            });
+        }
 
-        // Start with first target
-        setupTarget(0);
+        const cancelInitialBtn = instructions.querySelector('#calib-cancel-initial-btn');
+        if (cancelInitialBtn) cancelInitialBtn.addEventListener('click', cancel);
+
+        activeCalibrationSession = { cancel, retry: retryCurrentTarget };
 
         // Sampling loop (running at ~60 Hz)
         checkTimer = setInterval(() => {
-            if (isCancelled) return;
+            if (isCancelled || isWaitingForTrigger) return;
 
             const now = performance.now();
             const elapsed = now - targetStartTime;
 
-            // 1. Settling Phase
+            // 1. Settling Phase (300ms after user clicks/triggers dot)
             if (isSettling) {
-                if (elapsed >= config.settlingTimeMs) {
+                if (elapsed >= 300) {
                     isSettling = false;
+                    isCollecting = true;
                     targetDot.className = 'calibration-dot active-target collecting';
                     const stageBadge = document.getElementById('calib-stage-badge');
                     if (stageBadge) {
-                        stageBadge.textContent = 'Collecting...';
-                        stageBadge.style.color = '#34c759';
+                        stageBadge.className = 'calib-badge collecting';
+                        stageBadge.textContent = 'Recording...';
+                        stageBadge.style.backgroundColor = '#34c759';
+                        stageBadge.style.color = '#000';
                     }
                 } else {
                     return; // do not sample during settling
                 }
             }
 
-            // 2. Timeout check
+            // 2. Timeout check (10s while collecting)
             if (elapsed > config.targetTimeoutMs) {
                 const stageBadge = document.getElementById('calib-stage-badge');
                 if (stageBadge) {
                     stageBadge.textContent = 'Timed Out';
-                    stageBadge.style.color = '#ff3b30';
+                    stageBadge.style.backgroundColor = '#ff3b30';
+                    stageBadge.style.color = '#fff';
                 }
                 logToUI(`Target ${currentTargetIndex + 1} timed out before collecting ${config.minSamplesPerTarget} samples. Click Retry Target.`, false, 'warn');
                 return;
@@ -485,6 +552,18 @@ export async function startCalibration(options = {}) {
 
             // Target completion check
             if (targetSamples.length >= config.minSamplesPerTarget && elapsed >= config.minTargetDurationMs) {
+                isCollecting = false;
+                targetDot.className = 'calibration-dot active-target completed';
+                targetDot.innerHTML = '<span style="font-size: 16px;">✓</span>';
+
+                const stageBadge = document.getElementById('calib-stage-badge');
+                if (stageBadge) {
+                    stageBadge.className = 'calib-badge complete';
+                    stageBadge.textContent = 'Recorded';
+                    stageBadge.style.backgroundColor = '#2ed573';
+                    stageBadge.style.color = '#000';
+                }
+
                 // Compute actual target normalized screen coordinates
                 const rect = targetDot.getBoundingClientRect();
                 const targetNormX = (rect.left + rect.width / 2) / window.innerWidth;
@@ -497,30 +576,35 @@ export async function startCalibration(options = {}) {
                     allFrameIds.push(targetFrameIds[i]);
                 }
 
-                if (currentTargetIndex + 1 < TARGET_GRID.length) {
-                    setupTarget(currentTargetIndex + 1);
-                } else {
-                    // All 9 targets complete!
-                    clearInterval(checkTimer);
-                    checkTimer = null;
+                isWaitingForTrigger = true; // prevent re-entry
 
-                    // Diagnose two-axis variance before training
-                    const spread = computeFeatureSpread(allXTrain);
-                    if (!spread.hasSufficientSignal) {
-                        logToUI(`Calibration Diagnostic Warning: Pupil variance too low (varX: ${spread.varX.toFixed(6)}, varY: ${spread.varY.toFixed(6)}). Gaze vertical range may be compressed.`, true, 'warn');
+                setTimeout(() => {
+                    if (isCancelled) return;
+                    if (currentTargetIndex + 1 < TARGET_GRID.length) {
+                        setupTarget(currentTargetIndex + 1);
+                    } else {
+                        // All 9 targets complete!
+                        clearInterval(checkTimer);
+                        checkTimer = null;
+
+                        // Diagnose two-axis variance before training
+                        const spread = computeFeatureSpread(allXTrain);
+                        if (!spread.hasSufficientSignal) {
+                            logToUI(`Calibration Diagnostic Warning: Pupil variance too low (varX: ${spread.varX.toFixed(6)}, varY: ${spread.varY.toFixed(6)}). Gaze vertical range may be compressed.`, true, 'warn');
+                        }
+
+                        saveCalibrationData(allXTrain, allYTrain, {
+                            targetIds: allTargetIds,
+                            frameIds: allFrameIds,
+                            spread
+                        });
+
+                        completeCalibration().then(() => {
+                            cleanupSession();
+                            resolve([allXTrain, allYTrain, { targetIds: allTargetIds, frameIds: allFrameIds, spread }]);
+                        });
                     }
-
-                    saveCalibrationData(allXTrain, allYTrain, {
-                        targetIds: allTargetIds,
-                        frameIds: allFrameIds,
-                        spread
-                    });
-
-                    completeCalibration().then(() => {
-                        cleanupSession();
-                        resolve([allXTrain, allYTrain, { targetIds: allTargetIds, frameIds: allFrameIds, spread }]);
-                    });
-                }
+                }, 600);
             }
         }, 16);
     });
