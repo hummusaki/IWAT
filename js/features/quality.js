@@ -5,13 +5,15 @@ export class QualityGate {
         this.maxFrameAgeMs = options.maxFrameAgeMs || 250; // frames older than 250ms considered stale
         this.rollingWindowMs = options.rollingWindowMs || 5000; // 5-second window for detection coverage
 
-        this.frameHistory = []; // { timestamp, isValid, reason }
+        this.frameHistory = []; // { timestamp, isValid, hasFace, reason }
         this.rejectionCounts = {
             face_lost: 0,
             blink: 0,
             non_finite: 0,
             stale_frame: 0,
             degenerate_geometry: 0,
+            insufficient_landmarks: 0,
+            detector_error: 0,
             other: 0
         };
         this.totalEvaluatedFrames = 0;
@@ -26,6 +28,8 @@ export class QualityGate {
      * @param {boolean} context.isBlinking - whether frame occurred during a blink
      * @param {Object} [context.featureResult] - result from buildGazeFeatureVector
      * @param {number} [context.timestamp] - current timestamp (ms)
+     * @param {boolean} [context.detectorError] - whether detector threw an error
+     * @param {string} [context.reason] - explicit rejection reason override
      * @returns {{ isValid: boolean, reason: string|null }}
      */
     evaluate(context) {
@@ -35,7 +39,13 @@ export class QualityGate {
         let isValid = true;
         let reason = null;
 
-        if (context.frameAge > this.maxFrameAgeMs) {
+        if (context.detectorError || context.reason === 'detector_error') {
+            isValid = false;
+            reason = 'detector_error';
+        } else if (context.reason === 'insufficient_landmarks') {
+            isValid = false;
+            reason = 'insufficient_landmarks';
+        } else if (context.frameAge > this.maxFrameAgeMs) {
             isValid = false;
             reason = 'stale_frame';
         } else if (!context.hasFace) {
@@ -51,6 +61,8 @@ export class QualityGate {
                 reason = 'non_finite';
             } else if (subReason.includes('degenerate')) {
                 reason = 'degenerate_geometry';
+            } else if (subReason.includes('insufficient') || subReason.includes('missing')) {
+                reason = 'insufficient_landmarks';
             } else {
                 reason = 'other';
             }
@@ -63,32 +75,54 @@ export class QualityGate {
         }
 
         // add to rolling history
-        this.frameHistory.push({ timestamp, isValid, reason });
+        this.frameHistory.push({
+            timestamp,
+            isValid,
+            hasFace: !!context.hasFace,
+            reason
+        });
 
         // clean rolling window
-        const cutoff = timestamp - this.rollingWindowMs;
-        while (this.frameHistory.length > 0 && this.frameHistory[0].timestamp < cutoff) {
-            this.frameHistory.shift();
-        }
+        this.pruneHistory(timestamp);
 
         return { isValid, reason };
     }
 
+    pruneHistory(now = performance.now()) {
+        const cutoff = now - this.rollingWindowMs;
+        while (this.frameHistory.length > 0 && this.frameHistory[0].timestamp < cutoff) {
+            this.frameHistory.shift();
+        }
+    }
+
     /**
-     * get rolling detection coverage percentage (0 - 100%)
+     * get rolling valid sample coverage percentage (0 - 100%)
      */
-    getDetectionCoverage() {
+    getDetectionCoverage(now = performance.now()) {
+        this.pruneHistory(now);
         if (this.frameHistory.length === 0) return 0;
         const validCount = this.frameHistory.filter(f => f.isValid).length;
         return Math.round((validCount / this.frameHistory.length) * 100);
     }
 
     /**
+     * get rolling pure face detection coverage percentage (0 - 100%)
+     */
+    getFaceCoverage(now = performance.now()) {
+        this.pruneHistory(now);
+        if (this.frameHistory.length === 0) return 0;
+        const faceCount = this.frameHistory.filter(f => f.hasFace).length;
+        return Math.round((faceCount / this.frameHistory.length) * 100);
+    }
+
+    /**
      * get snapshot of diagnostics metrics
      */
-    getMetrics() {
+    getMetrics(now = performance.now()) {
+        this.pruneHistory(now);
         return {
-            coveragePercent: this.getDetectionCoverage(),
+            coveragePercent: this.getDetectionCoverage(now),
+            faceCoveragePercent: this.getFaceCoverage(now),
             totalEvaluated: this.totalEvaluatedFrames,
             totalValid: this.totalValidFrames,
             rejections: { ...this.rejectionCounts }
@@ -103,6 +137,8 @@ export class QualityGate {
             non_finite: 0,
             stale_frame: 0,
             degenerate_geometry: 0,
+            insufficient_landmarks: 0,
+            detector_error: 0,
             other: 0
         };
         this.totalEvaluatedFrames = 0;
