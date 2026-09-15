@@ -1,22 +1,47 @@
 // gaze-tracker.js - reliable gaze tracking pipeline with aspect ratio preservation,
-// single inference in flight, fresh frame scheduling, and objective diagnostics
+// single inference in flight, fresh frame scheduling, immutable sample contract, and objective diagnostics
 
 import { logToUI } from "./logger.js";
-import { predictGaze } from './regression_model.js';
+import { predictGaze, disposeGazeModel } from './regression_model.js';
 import { createFaceAdapter } from './tracking/face-adapter.js';
 import { computeProcessingCanvasDimensions, getRelativePupilPos, buildGazeFeatureVector } from './features/geometry.js';
 import { BlinkDetector } from './features/blink.js';
 import { QualityGate } from './features/quality.js';
 import { getCameraAspectRatio } from './camera.js';
 
+export const MAX_FRAME_AGE_MS = 250;
+export const STALL_THRESHOLD_MS = 800;
+
+export class GazeSample {
+    constructor({ sessionId, frameId, sourceTime, processingStartTime, processingEndTime, features, valid, rejectionReason }) {
+        this.sessionId = sessionId;
+        this.frameId = frameId;
+        this.sourceTime = sourceTime;
+        this.processingStartTime = processingStartTime;
+        this.processingEndTime = processingEndTime;
+        this.latencyMs = Math.round(processingEndTime - processingStartTime);
+        this.ageMs = Math.round(processingEndTime - sourceTime);
+        this.features = features ? Object.freeze([...features]) : null;
+        this.valid = !!valid;
+        this.rejectionReason = rejectionReason || null;
+        Object.freeze(this);
+    }
+}
+
+export let currentSample = null;
 export let currentGaze = null;
+
+// session generation token
+let currentSessionId = 0;
+let nextFrameId = 1;
 
 // diagnostics state
 let activeAdapter = null;
 let blinkDetector = new BlinkDetector();
-let qualityGate = new QualityGate();
+let qualityGate = new QualityGate({ maxFrameAgeMs: MAX_FRAME_AGE_MS });
 
 let isInferenceInFlight = false;
+let activeInferencePromise = null;
 let isLoopRunning = false;
 let animationFrameId = null;
 let videoFrameCallbackId = null;
@@ -33,28 +58,55 @@ let overlayCanvas = null;
 let overlayCtx = null;
 let isOverlayEnabled = true;
 
-// performance counters
+// performance counters & latency distribution
+let observedFramesCount = 0;
+let processedFramesCount = 0;
 let droppedFramesCount = 0;
-let lastFrameTime = performance.now();
+let skippedFramesCount = 0;
+let lastFrameTime = typeof performance !== 'undefined' ? performance.now() : 0;
 let measuredInferenceLatency = 0;
 let measuredFrameAge = 0;
+let recentLatencies = [];
 let videoFps = 0;
 let frameCount = 0;
-let fpsTimer = performance.now();
+let fpsTimer = typeof performance !== 'undefined' ? performance.now() : 0;
 let activeVideoElement = null;
 let hasTrackingStarted = false;
 let onTrackingStartedCallback = null;
+
+// duplicate frame detection
+let lastProcessedVideoTime = -1;
+let lastProcessedPresentedFrames = -1;
+
+// detector error recovery & throttling
+let consecutiveDetectorErrors = 0;
+let lastDetectorErrorLogTime = 0;
 
 let currentTrackingQuality = {
     hasFace: false,
     isBlinking: false,
     frameAge: 0,
     ear: null,
-    blinksPerMin: 0
+    blinksPerMin: 0,
+    stalled: false
 };
 
 export function getCurrentTrackingQuality() {
     return { ...currentTrackingQuality };
+}
+
+export function getCurrentSample() {
+    return currentSample;
+}
+
+export function getCurrentGaze() {
+    return (currentSample && currentSample.valid) ? currentSample.features : null;
+}
+
+export function isSampleFresh(sample, maxAgeMs = MAX_FRAME_AGE_MS) {
+    if (!sample || !sample.valid) return false;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    return (now - sample.sourceTime) <= maxAgeMs;
 }
 
 export function setLandmarkOverlayEnabled(enabled) {
@@ -74,6 +126,7 @@ export function getActiveAdapter() {
  */
 export function initOverlayCanvas(videoElement) {
     activeVideoElement = videoElement;
+    if (typeof document === 'undefined') return;
     overlayCanvas = document.getElementById('webcam-overlay');
     if (!overlayCanvas && videoElement.parentElement) {
         overlayCanvas = document.createElement('canvas');
@@ -97,43 +150,80 @@ function syncOverlayDimensions() {
     }
 }
 
+/**
+ * await drainage of active inference before disposing adapter or restarting loop
+ */
+export async function drainInference() {
+    if (activeInferencePromise) {
+        try {
+            await activeInferencePromise;
+        } catch (e) { }
+    }
+}
+
 /** jsdoc
- * switch face adapter
+ * switch face adapter safely with inference drainage
  * @param {'tfjs' | 'mediapipe-tasks'} type
  */
 export async function setFaceAdapter(type = 'tfjs') {
     logToUI(`Switching face adapter to ${type}...`, true, 'info');
+    stopTrackingLoop();
+    await drainInference();
+
     if (activeAdapter) {
-        activeAdapter.dispose();
+        try {
+            activeAdapter.dispose();
+        } catch (e) {
+            console.warn('Error disposing previous adapter:', e);
+        }
         activeAdapter = null;
     }
 
     const adapter = createFaceAdapter(type);
-    await adapter.init();
-    activeAdapter = adapter;
-    logToUI(`Face adapter active: ${adapter.getName()}`, false, 'success');
-    return adapter;
+    try {
+        await adapter.init();
+        activeAdapter = adapter;
+        logToUI(`Face adapter active: ${adapter.getName()}`, false, 'success');
+        return adapter;
+    } catch (err) {
+        try { adapter.dispose(); } catch (e) { }
+        activeAdapter = null;
+        logToUI(`Failed to switch adapter: ${err.message}`, true, 'error');
+        throw err;
+    }
 }
 
 /** jsdoc
- * initialize detector (default TFJS)
+ * initialize detector safely with local instance before publishing
+ * @param {'tfjs' | 'mediapipe-tasks'} type
  * @returns {Promise<BaseFaceAdapter>}
  */
-export async function initDetector() {
+export async function initDetector(type = 'tfjs') {
+    if (activeAdapter && activeAdapter.isInitialized) {
+        return activeAdapter;
+    }
+
+    if (activeAdapter) {
+        try { activeAdapter.dispose(); } catch (e) { }
+        activeAdapter = null;
+    }
+
+    const adapter = createFaceAdapter(type);
     try {
-        if (!activeAdapter) {
-            activeAdapter = createFaceAdapter('tfjs');
-            await activeAdapter.init();
-        }
+        await adapter.init();
+        activeAdapter = adapter;
+        consecutiveDetectorErrors = 0;
         return activeAdapter;
     } catch (err) {
+        try { adapter.dispose(); } catch (e) { }
+        activeAdapter = null;
         logToUI(`Detector Initialization Error: ${err.message}`, true, 'error');
         throw err;
     }
 }
 
 /**
- * main tracking entry point
+ * main tracking entry point with session token
  */
 export function initGazeDataExtract(videoElement, detector, onTrackingStarted) {
     if (!videoElement) {
@@ -147,47 +237,88 @@ export function initGazeDataExtract(videoElement, detector, onTrackingStarted) {
 
     initOverlayCanvas(videoElement);
 
-    // stop previous loop if running
+    // stop previous loop and increment session generation
     stopTrackingLoop();
 
+    const sessionId = ++currentSessionId;
     isLoopRunning = true;
-    isInferenceInFlight = false;
     hasTrackingStarted = false;
+    lastFrameTime = performance.now();
+    lastProcessedVideoTime = -1;
+    lastProcessedPresentedFrames = -1;
+    consecutiveDetectorErrors = 0;
 
     logToUI('Starting tracking processing loop...', true, 'info');
-    scheduleNextFrame();
+    scheduleNextFrame(sessionId);
 }
 
 /**
- * schedule next frame via requestVideoFrameCallback (preferred for camera) or requestAnimationFrame
+ * schedule next frame via requestVideoFrameCallback or requestAnimationFrame
  */
-function scheduleNextFrame() {
-    if (!isLoopRunning) return;
+function scheduleNextFrame(sessionId) {
+    if (!isLoopRunning || sessionId !== currentSessionId) return;
 
     if (activeVideoElement && typeof activeVideoElement.requestVideoFrameCallback === 'function') {
-        videoFrameCallbackId = activeVideoElement.requestVideoFrameCallback(processFrameCallback);
-    } else {
-        animationFrameId = requestAnimationFrame(processFrameRaf);
+        videoFrameCallbackId = activeVideoElement.requestVideoFrameCallback((now, metadata) => {
+            processFrameCallback(now, metadata, sessionId);
+        });
+    } else if (typeof requestAnimationFrame === 'function') {
+        animationFrameId = requestAnimationFrame((timestamp) => {
+            processFrameRaf(timestamp, sessionId);
+        });
     }
 }
 
-function processFrameCallback(now, metadata) {
+function processFrameCallback(now, metadata, sessionId) {
+    if (!isLoopRunning || sessionId !== currentSessionId) return;
+
+    observedFramesCount++;
+
+    // check duplicate callback frames
+    if (metadata && metadata.presentedFrames != null) {
+        if (metadata.presentedFrames === lastProcessedPresentedFrames) {
+            skippedFramesCount++;
+            scheduleNextFrame(sessionId);
+            return;
+        }
+        lastProcessedPresentedFrames = metadata.presentedFrames;
+    }
+
     const presentationTime = metadata?.presentationTime || performance.now();
     const frameAge = Math.max(0, performance.now() - presentationTime);
-    handleFrame(presentationTime, frameAge);
+    dispatchFrame(presentationTime, frameAge, sessionId);
 }
 
-function processFrameRaf(timestamp) {
+function processFrameRaf(timestamp, sessionId) {
+    if (!isLoopRunning || sessionId !== currentSessionId) return;
+
+    observedFramesCount++;
+
+    // check whether video time advanced
+    if (activeVideoElement && activeVideoElement.currentTime === lastProcessedVideoTime && activeVideoElement.currentTime > 0) {
+        skippedFramesCount++;
+        scheduleNextFrame(sessionId);
+        return;
+    }
+    if (activeVideoElement) {
+        lastProcessedVideoTime = activeVideoElement.currentTime;
+    }
+
     const frameAge = Math.max(0, performance.now() - timestamp);
-    handleFrame(timestamp, frameAge);
+    dispatchFrame(timestamp, frameAge, sessionId);
+}
+
+function dispatchFrame(presentationTimestamp, frameAge, sessionId) {
+    const p = handleFrame(presentationTimestamp, frameAge, sessionId);
+    activeInferencePromise = p;
 }
 
 /**
  * single-frame inference handler
  */
-async function handleFrame(presentationTimestamp, frameAge) {
-    if (!isLoopRunning || !activeVideoElement || !activeAdapter) {
-        scheduleNextFrame();
+async function handleFrame(presentationTimestamp, frameAge, sessionId) {
+    if (!isLoopRunning || sessionId !== currentSessionId || !activeVideoElement || !activeAdapter) {
+        scheduleNextFrame(sessionId);
         return;
     }
 
@@ -195,7 +326,7 @@ async function handleFrame(presentationTimestamp, frameAge) {
     const vWidth = activeVideoElement.videoWidth;
     const vHeight = activeVideoElement.videoHeight;
     if (!vWidth || !vHeight || activeVideoElement.readyState < 2) {
-        scheduleNextFrame();
+        scheduleNextFrame(sessionId);
         return;
     }
 
@@ -218,39 +349,121 @@ async function handleFrame(presentationTimestamp, frameAge) {
             timestamp: now,
             featureResult: { valid: false, reason: 'dropped_stale_frame' }
         });
-        scheduleNextFrame();
+        scheduleNextFrame(sessionId);
         return;
     }
 
     isInferenceInFlight = true;
-    measuredFrameAge = Math.round(frameAge);
-
+    const frameId = nextFrameId++;
+    lastFrameTime = now;
     const inferenceStart = performance.now();
+
+    let publishedSample = null;
 
     try {
         // aspect-ratio preservation: dynamically resize processing canvas
         const dims = computeProcessingCanvasDimensions(vWidth, vHeight, 640);
-        if (aiCanvas.width !== dims.width || aiCanvas.height !== dims.height) {
+        if (aiCanvas && (aiCanvas.width !== dims.width || aiCanvas.height !== dims.height)) {
             aiCanvas.width = dims.width;
             aiCanvas.height = dims.height;
         }
 
         // draw video frame to processing canvas
-        aiCtx.drawImage(activeVideoElement, 0, 0, dims.width, dims.height);
+        if (aiCtx) {
+            aiCtx.drawImage(activeVideoElement, 0, 0, dims.width, dims.height);
+        }
 
         // run face estimation
-        const faces = await activeAdapter.estimateFaces(aiCanvas, presentationTimestamp);
-        measuredInferenceLatency = Math.round(performance.now() - inferenceStart);
+        let faces = [];
+        try {
+            faces = await activeAdapter.estimateFaces(aiCanvas || activeVideoElement, presentationTimestamp);
+            consecutiveDetectorErrors = 0;
+        } catch (detectorErr) {
+            consecutiveDetectorErrors++;
+            const tErr = performance.now();
+            if (tErr - lastDetectorErrorLogTime > 2000) {
+                logToUI(`Detector error: ${detectorErr.message}`, false, 'warn');
+                lastDetectorErrorLogTime = tErr;
+            }
+
+            qualityGate.evaluate({
+                frameAge: Math.max(0, performance.now() - presentationTimestamp),
+                hasFace: false,
+                isBlinking: false,
+                timestamp: now,
+                detectorError: true
+            });
+
+            publishedSample = new GazeSample({
+                sessionId,
+                frameId,
+                sourceTime: presentationTimestamp,
+                processingStartTime: inferenceStart,
+                processingEndTime: performance.now(),
+                features: null,
+                valid: false,
+                rejectionReason: 'detector_error'
+            });
+
+            currentSample = publishedSample;
+            currentGaze = null;
+            hideGazePointer();
+
+            if (consecutiveDetectorErrors >= 5) {
+                logToUI('Detector encountered persistent errors. Pausing tracking. Click Retry.', true, 'error');
+                stopTrackingLoop();
+                return;
+            }
+
+            return;
+        }
+
+        const inferenceEnd = performance.now();
+        measuredInferenceLatency = Math.round(inferenceEnd - inferenceStart);
+        recordLatency(measuredInferenceLatency);
+        measuredFrameAge = Math.round(inferenceEnd - presentationTimestamp);
+
+        // check session validity after await
+        if (!isLoopRunning || sessionId !== currentSessionId) {
+            return;
+        }
+
+        processedFramesCount++;
+
+        // Recheck result age at completion
+        if (measuredFrameAge > MAX_FRAME_AGE_MS) {
+            publishedSample = new GazeSample({
+                sessionId,
+                frameId,
+                sourceTime: presentationTimestamp,
+                processingStartTime: inferenceStart,
+                processingEndTime: inferenceEnd,
+                features: null,
+                valid: false,
+                rejectionReason: 'stale_frame'
+            });
+            currentSample = publishedSample;
+            currentGaze = null;
+            qualityGate.evaluate({
+                frameAge: measuredFrameAge,
+                hasFace: faces && faces.length > 0,
+                isBlinking: false,
+                timestamp: now,
+                reason: 'stale_frame'
+            });
+            hideGazePointer();
+            return;
+        }
 
         if (!faces || faces.length === 0) {
             // face loss: invalidate gaze immediately
-            currentGaze = null;
             currentTrackingQuality = {
                 hasFace: false,
                 isBlinking: false,
                 frameAge: measuredFrameAge,
                 ear: null,
-                blinksPerMin: blinkDetector.getBlinksPerMinute(now)
+                blinksPerMin: blinkDetector.getBlinksPerMinute(now),
+                stalled: false
             };
 
             qualityGate.evaluate({
@@ -260,30 +473,60 @@ async function handleFrame(presentationTimestamp, frameAge) {
                 timestamp: now
             });
 
-            // clear overlay
+            publishedSample = new GazeSample({
+                sessionId,
+                frameId,
+                sourceTime: presentationTimestamp,
+                processingStartTime: inferenceStart,
+                processingEndTime: inferenceEnd,
+                features: null,
+                valid: false,
+                rejectionReason: 'face_lost'
+            });
+
+            currentSample = publishedSample;
+            currentGaze = null;
+
             if (overlayCtx && overlayCanvas) {
                 overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
             }
-
-            // hide gaze pointer on face loss
             hideGazePointer();
         } else {
             // face detected
             const face = faces[0];
             const kp = face.keypoints;
 
-            if (!kp || kp.length < 468) {
-                currentGaze = null;
+            // Required landmarks: outer/inner/top/bottom for both eyes + both irises
+            const requiredIndices = [33, 133, 145, 159, 263, 362, 374, 386, 468, 473];
+            const hasRequiredLandmarks = kp && kp.length >= 474 && requiredIndices.every(idx => {
+                const pt = kp[idx];
+                return pt && Number.isFinite(pt.x) && Number.isFinite(pt.y);
+            });
+
+            if (!hasRequiredLandmarks) {
                 qualityGate.evaluate({
                     frameAge: measuredFrameAge,
-                    hasFace: false,
+                    hasFace: true,
                     isBlinking: false,
                     timestamp: now,
-                    featureResult: { valid: false, reason: 'insufficient_landmarks' }
+                    reason: 'insufficient_landmarks'
                 });
+
+                publishedSample = new GazeSample({
+                    sessionId,
+                    frameId,
+                    sourceTime: presentationTimestamp,
+                    processingStartTime: inferenceStart,
+                    processingEndTime: inferenceEnd,
+                    features: null,
+                    valid: false,
+                    rejectionReason: 'insufficient_landmarks'
+                });
+
+                currentSample = publishedSample;
+                currentGaze = null;
                 hideGazePointer();
             } else {
-                // keypoints: 468 Left Iris, 473 Right Iris (MediaPipe standard)
                 const leftPupil = kp[468];
                 const rightPupil = kp[473];
 
@@ -297,7 +540,7 @@ async function handleFrame(presentationTimestamp, frameAge) {
                 const rightTop = kp[386];
                 const rightBottom = kp[374];
 
-                // measurable bilateral blink detection
+                // bilateral blink detection
                 const blinkResult = blinkDetector.update(
                     { top: leftTop, bottom: leftBottom, inner: leftInner, outer: leftOuter },
                     { top: rightTop, bottom: rightBottom, inner: rightInner, outer: rightOuter },
@@ -314,7 +557,8 @@ async function handleFrame(presentationTimestamp, frameAge) {
                     isBlinking: blinkResult.isBlinking,
                     frameAge: measuredFrameAge,
                     ear: blinkResult.avgEAR,
-                    blinksPerMin: blinkResult.blinksPerMinute
+                    blinksPerMin: blinkResult.blinksPerMinute,
+                    stalled: false
                 };
 
                 const qualityEvaluation = qualityGate.evaluate({
@@ -325,18 +569,31 @@ async function handleFrame(presentationTimestamp, frameAge) {
                     featureResult
                 });
 
-                if (qualityEvaluation.isValid && featureResult.valid) {
-                    currentGaze = featureResult.features;
+                const isSampleValid = qualityEvaluation.isValid && featureResult.valid && !blinkResult.isBlinking;
+
+                publishedSample = new GazeSample({
+                    sessionId,
+                    frameId,
+                    sourceTime: presentationTimestamp,
+                    processingStartTime: inferenceStart,
+                    processingEndTime: inferenceEnd,
+                    features: isSampleValid ? featureResult.features : null,
+                    valid: isSampleValid,
+                    rejectionReason: isSampleValid ? null : (qualityEvaluation.reason || featureResult.reason || 'invalid_sample')
+                });
+
+                currentSample = publishedSample;
+
+                if (isSampleValid) {
+                    currentGaze = publishedSample.features;
 
                     if (!hasTrackingStarted && onTrackingStartedCallback) {
                         hasTrackingStarted = true;
                         onTrackingStartedCallback();
                     }
 
-                    // run gaze inference if model loaded
                     runGazeInference(currentGaze);
                 } else {
-                    // blink or invalid feature: invalidate current gaze sample
                     currentGaze = null;
                     if (blinkResult.isBlinking) {
                         visualizeBlinkOnCursor();
@@ -353,8 +610,22 @@ async function handleFrame(presentationTimestamp, frameAge) {
         console.error('Error in tracking loop handleFrame:', err);
     } finally {
         isInferenceInFlight = false;
-        scheduleNextFrame();
+        scheduleNextFrame(sessionId);
     }
+}
+
+function recordLatency(ms) {
+    recentLatencies.push(ms);
+    if (recentLatencies.length > 30) {
+        recentLatencies.shift();
+    }
+}
+
+function calculateLatencyPercentile(p) {
+    if (recentLatencies.length === 0) return 0;
+    const sorted = [...recentLatencies].sort((a, b) => a - b);
+    const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((p / 100) * sorted.length)));
+    return sorted[idx];
 }
 
 /** jsdoc
@@ -364,6 +635,8 @@ async function handleFrame(presentationTimestamp, frameAge) {
 function runGazeInference(features) {
     const coords = predictGaze(features);
     if (!coords) return;
+
+    if (typeof window === 'undefined') return;
 
     const screenX = coords[0] * window.innerWidth;
     const screenY = coords[1] * window.innerHeight;
@@ -384,7 +657,8 @@ function runGazeInference(features) {
     }
 }
 
-function hideGazePointer() {
+export function hideGazePointer() {
+    if (typeof document === 'undefined') return;
     const gazePointer = document.getElementById('gaze-pointer');
     if (gazePointer) {
         gazePointer.style.display = 'none';
@@ -394,6 +668,7 @@ function hideGazePointer() {
 }
 
 function visualizeBlinkOnCursor() {
+    if (typeof document === 'undefined') return;
     const gazePointer = document.getElementById('gaze-pointer');
     if (gazePointer && gazePointer.style.display !== 'none') {
         gazePointer.style.backgroundColor = '#ffcc00';
@@ -405,13 +680,9 @@ function visualizeBlinkOnCursor() {
 
 /** jsdoc
  * render visual landmark overlay on webcam feed
- * @param {object} face - face detection result with keypoints
- * @param {object} processingDims - processing canvas dimensions
- * @param {number} vWidth - video width
- * @param {number} vHeight - video height
- * @param {boolean} isBlinking - whether eyes are detected as blinking
  */
 function renderOverlay(face, processingDims, vWidth, vHeight, isBlinking) {
+    if (!overlayCtx || !overlayCanvas) return;
     syncOverlayDimensions();
     overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
@@ -420,7 +691,6 @@ function renderOverlay(face, processingDims, vWidth, vHeight, isBlinking) {
 
     const kp = face.keypoints;
 
-    // draw eye boundaries
     overlayCtx.lineWidth = 1.5;
     overlayCtx.strokeStyle = isBlinking ? '#ff9f1a' : '#00d2d3';
 
@@ -440,14 +710,6 @@ function renderOverlay(face, processingDims, vWidth, vHeight, isBlinking) {
     }
 }
 
-/** jsdoc
- * draw path
- * @param {object} ctx - canvas context
- * @param {Array<object>} keypoints - face keypoints
- * @param {Array<number>} indices - indices to draw
- * @param {number} scaleX - x-axis scaling factor
- * @param {number} scaleY - y-axis scaling factor
- */
 function drawPath(ctx, keypoints, indices, scaleX, scaleY) {
     ctx.beginPath();
     let first = true;
@@ -473,11 +735,28 @@ function drawPoint(ctx, pt, scaleX, scaleY, radius = 2) {
 }
 
 /**
+ * stall watchdog: checks whether camera feed has stopped advancing
+ */
+export function checkStallWatchdog(maxStallMs = STALL_THRESHOLD_MS) {
+    if (!isLoopRunning) return false;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - lastFrameTime > maxStallMs) {
+        currentGaze = null;
+        currentSample = null;
+        currentTrackingQuality.hasFace = false;
+        currentTrackingQuality.stalled = true;
+        hideGazePointer();
+        return true;
+    }
+    return false;
+}
+
+/**
  * stop processing loop cleanly
  */
 export function stopTrackingLoop() {
+    currentSessionId++;
     isLoopRunning = false;
-    isInferenceInFlight = false;
 
     if (videoFrameCallbackId && activeVideoElement && typeof activeVideoElement.cancelVideoFrameCallback === 'function') {
         try {
@@ -486,7 +765,7 @@ export function stopTrackingLoop() {
         videoFrameCallbackId = null;
     }
 
-    if (animationFrameId) {
+    if (animationFrameId && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
     }
@@ -501,18 +780,30 @@ export function disposeSession() {
     logToUI('Disposing gaze tracking session resources...', true, 'info');
     stopTrackingLoop();
 
+    // Dispose gaze regression model
+    disposeGazeModel();
+
     if (activeAdapter) {
-        activeAdapter.dispose();
+        try {
+            activeAdapter.dispose();
+        } catch (e) {
+            console.warn('Error disposing adapter:', e);
+        }
         activeAdapter = null;
     }
 
     blinkDetector.reset();
     qualityGate.reset();
 
+    currentSample = null;
     currentGaze = null;
     smoothedGazeX = null;
     smoothedGazeY = null;
     droppedFramesCount = 0;
+    observedFramesCount = 0;
+    processedFramesCount = 0;
+    skippedFramesCount = 0;
+    recentLatencies = [];
 
     if (overlayCtx && overlayCanvas) {
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -523,6 +814,7 @@ export function disposeSession() {
  * diagnostics snapshot for live telemetry HUD
  */
 export function getDiagnosticsSnapshot() {
+    checkStallWatchdog();
     const qualityMetrics = qualityGate.getMetrics();
     const tensorCount = (typeof tf !== 'undefined' && tf.memory) ? tf.memory().numTensors : 0;
 
@@ -530,13 +822,20 @@ export function getDiagnosticsSnapshot() {
         adapter: activeAdapter ? activeAdapter.getName() : 'None',
         videoFps,
         inferenceLatencyMs: measuredInferenceLatency,
+        inferenceP50Ms: calculateLatencyPercentile(50),
+        inferenceP95Ms: calculateLatencyPercentile(95),
         frameAgeMs: measuredFrameAge,
         detectionCoveragePercent: qualityMetrics.coveragePercent,
+        faceCoveragePercent: qualityMetrics.faceCoveragePercent,
         hasFace: currentTrackingQuality.hasFace,
         isBlinking: currentTrackingQuality.isBlinking,
         ear: currentTrackingQuality.ear,
         blinksPerMin: currentTrackingQuality.blinksPerMin,
+        stalled: currentTrackingQuality.stalled,
+        observedFrames: observedFramesCount,
+        processedFrames: processedFramesCount,
         droppedFrames: droppedFramesCount,
+        skippedFrames: skippedFramesCount,
         rejections: qualityMetrics.rejections,
         activeTensors: tensorCount
     };
