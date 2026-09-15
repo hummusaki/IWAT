@@ -82,3 +82,61 @@ test('validateCalibrationData rejects out-of-range y_train coordinates', () => {
     assert.equal(result.valid, false);
     assert.match(result.reason, /Out-of-range value in y_train/);
 });
+
+test('validateCalibrationData accepts valid committed v5 calibration data', () => {
+    const validV5 = {
+        version: 5,
+        id: 'calib_12345',
+        timestamp: Date.now(),
+        committed: true,
+        screen: { width: 1440, height: 900, devicePixelRatio: 2 },
+        x_train: Array.from({ length: 135 }, () => [0.12, -0.05, 0.14, -0.04]),
+        y_train: Array.from({ length: 135 }, () => [0.5, 0.5]),
+        targetIds: Array.from({ length: 135 }, (_, i) => Math.floor(i / 15))
+    };
+
+    const result = validateCalibrationData(validV5);
+    assert.equal(result.valid, true);
+    assert.equal(result.data.version, 5);
+    assert.equal(result.data.x_train.length, 135);
+});
+
+test('validateCalibrationData rejects uncommitted v5 calibration data', () => {
+    const uncommittedV5 = {
+        version: 5,
+        id: 'calib_incomplete',
+        timestamp: Date.now(),
+        committed: false,
+        x_train: Array.from({ length: 45 }, () => [0.1, 0.2, 0.3, 0.4]),
+        y_train: Array.from({ length: 45 }, () => [0.5, 0.5])
+    };
+
+    const result = validateCalibrationData(uncommittedV5);
+    assert.equal(result.valid, false);
+    assert.match(result.reason, /uncommitted or incomplete/);
+});
+
+test('computeFeatureSpread accurately detects presence or absence of two-axis variance', async () => {
+    const { computeFeatureSpread } = await import('../js/calibration.js');
+
+    // Data with variance on both axes
+    const goodData = [
+        [0.10, 0.20, 0.11, 0.21],
+        [0.15, 0.25, 0.16, 0.26],
+        [0.20, 0.30, 0.21, 0.31]
+    ];
+    const goodSpread = computeFeatureSpread(goodData);
+    assert.equal(goodSpread.hasSufficientSignal, true);
+    assert.ok(goodSpread.varX > 1e-4);
+    assert.ok(goodSpread.varY > 1e-4);
+
+    // Data with ZERO vertical variance (Y values identical)
+    const flatYData = [
+        [0.10, 0.20, 0.11, 0.20],
+        [0.15, 0.20, 0.16, 0.20],
+        [0.20, 0.20, 0.21, 0.20]
+    ];
+    const flatYSpread = computeFeatureSpread(flatYData);
+    assert.equal(flatYSpread.hasSufficientSignal, false);
+    assert.ok(flatYSpread.varY < 1e-5);
+});

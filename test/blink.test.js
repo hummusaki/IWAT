@@ -107,3 +107,89 @@ test('BlinkDetector ignores aborted noise dips below minDuration', () => {
     // Should not count as a full completed blink because duration was < 50ms
     assert.equal(res.totalBlinks, 0);
 });
+
+test('BlinkDetector counts single-observation closure when duration exceeds minDuration', () => {
+    const detector = new BlinkDetector({
+        closedThreshold: 0.18,
+        openThreshold: 0.23,
+        minDurationMs: 50,
+        maxDurationMs: 400
+    });
+
+    const makeEye = (ear) => ({
+        top: { x: 25, y: 0 },
+        bottom: { x: 25, y: 50 * ear },
+        inner: { x: 0, y: 25 },
+        outer: { x: 50, y: 25 }
+    });
+
+    let t = 1000;
+    // Frame 1: Open
+    detector.update(makeEye(0.3), makeEye(0.3), t);
+
+    // Frame 2 (at 10-15 Hz): Closed observation lasting 70ms
+    t += 70;
+    const r2 = detector.update(makeEye(0.12), makeEye(0.12), t);
+    assert.equal(r2.isBlinking, true);
+
+    // Frame 3: Reopened
+    t += 70;
+    const r3 = detector.update(makeEye(0.3), makeEye(0.3), t);
+    assert.equal(r3.isBlinking, false);
+    assert.equal(r3.totalBlinks, 1);
+    assert.equal(r3.lastBlinkDuration, 70);
+});
+
+test('BlinkDetector resets in-flight episode on face loss or invalid landmarks', () => {
+    const detector = new BlinkDetector();
+
+    const makeEye = (ear) => ({
+        top: { x: 25, y: 0 },
+        bottom: { x: 25, y: 50 * ear },
+        inner: { x: 0, y: 25 },
+        outer: { x: 50, y: 25 }
+    });
+
+    let t = 1000;
+    detector.update(makeEye(0.3), makeEye(0.3), t);
+
+    // Closing
+    t += 30;
+    detector.update(makeEye(0.12), makeEye(0.12), t);
+
+    // Face lost (null keypoints)
+    t += 30;
+    const res = detector.update(null, null, t);
+    assert.equal(res.measurementAvailable, false);
+    assert.equal(res.isBlinking, false);
+    assert.equal(res.state, BlinkState.OPEN);
+
+    // Reacquired open face after 2 seconds
+    t += 2000;
+    const res2 = detector.update(makeEye(0.3), makeEye(0.3), t);
+    // Must NOT count a spurious 2-second blink
+    assert.equal(res2.totalBlinks, 0);
+});
+
+test('BlinkDetector resets in-flight episode on excessive time gap', () => {
+    const detector = new BlinkDetector({ maxAllowedGapMs: 500 });
+
+    const makeEye = (ear) => ({
+        top: { x: 25, y: 0 },
+        bottom: { x: 25, y: 50 * ear },
+        inner: { x: 0, y: 25 },
+        outer: { x: 50, y: 25 }
+    });
+
+    let t = 1000;
+    detector.update(makeEye(0.3), makeEye(0.3), t);
+
+    t += 30;
+    detector.update(makeEye(0.12), makeEye(0.12), t);
+
+    // 2-second gap (e.g. background tab or CPU freeze)
+    t += 2000;
+    const res = detector.update(makeEye(0.3), makeEye(0.3), t);
+    assert.equal(res.totalBlinks, 0);
+    assert.equal(res.state, BlinkState.OPEN);
+});
