@@ -193,7 +193,7 @@ export function checkExistingCalibration(storageKey = CALIBRATION_STORAGE_KEY) {
             return null;
         }
 
-        // Check if old v4 schema needs fresh calibration
+        // check if old v4 schema needs fresh calibration
         if (validation.data.version === 4 && storageKey === CALIBRATION_STORAGE_KEY) {
             logToUI('Previous v4 calibration detected. Upgrading to v5 contract; fresh calibration recommended.', false, 'info');
         }
