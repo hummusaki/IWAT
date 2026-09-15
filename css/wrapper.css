@@ -383,6 +383,88 @@ body {
     transform: scale(1);
 }
 
+/* Sequential calibration overlay controls */
+.calibration-top-bar {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    right: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: auto;
+    z-index: 10002;
+}
+
+.calibration-status-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.calib-badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: bold;
+    background: #feca57;
+    color: #000;
+}
+
+.calib-badge.collecting {
+    background: #00d2d3;
+    color: #000;
+}
+
+.calib-badge.complete {
+    background: #2ed573;
+    color: #000;
+}
+
+.calibration-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.calib-ctrl-btn {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background: #007acc;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.calib-ctrl-btn:hover {
+    background: #005999;
+}
+
+.calib-ctrl-btn.secondary {
+    background: #3e3e42;
+    border-color: #555;
+}
+
+.calib-ctrl-btn.secondary:hover {
+    background: #4e4e52;
+}
+
+.calibration-dot.active-target {
+    animation: calib-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes calib-pulse {
+    0% { transform: scale(1); box-shadow: 0 0 10px rgba(255, 59, 48, 0.7); }
+    50% { transform: scale(1.18); box-shadow: 0 0 24px rgba(255, 59, 48, 0.95); }
+    100% { transform: scale(1); box-shadow: 0 0 10px rgba(255, 59, 48, 0.7); }
+}
+
 #gaze-pointer {
     position: fixed;
     top: 0;
