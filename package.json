@@ -1,0 +1,18 @@
+{
+  "name": "iwat",
+  "version": "0.1.0",
+  "description": "Interactive Web Accessibility Test",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "python3 -m http.server 8080"
+  },
+  "keywords": [
+    "accessibility",
+    "eye-tracking",
+    "mediapipe",
+    "tensorflow"
+  ],
+  "author": "",
+  "license": "ISC"
+}
