@@ -16,6 +16,7 @@ let currentStream = null;
 let currentState = CameraState.IDLE;
 let lastError = null;
 let currentAspectRatio = 4 / 3;
+let currentCameraSessionId = 0;
 const stateListeners = new Set();
 
 export function getCameraState() {
@@ -44,9 +45,9 @@ function setState(newState, error = null) {
 }
 
 /** jsdoc
- * starts camera with reliable lifecycle and error categorization
+ * starts camera with reliable lifecycle, cancellation, and error categorization
  * @param {HTMLVideoElement} videoElement
- * @param {Object} options - configure camera with facing mode, idealwidth, idealheight
+ * @param {Object} options - configure camera with facing mode, idealwidth, idealheight, metadataTimeoutMs
  * @returns {Promise<{ videoElement: HTMLVideoElement, stream: MediaStream, width: number, height: number, aspectRatio: number }>}
  */
 export async function startCamera(videoElement, options = {}) {
@@ -65,7 +66,7 @@ export async function startCamera(videoElement, options = {}) {
         throw err;
     }
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!navigator?.mediaDevices?.getUserMedia) {
         const err = new Error('navigator.mediaDevices.getUserMedia is not supported on this browser.');
         setState(CameraState.ERROR, err);
         logToUI(`Camera Support Error: ${err.message}`, true, 'error');
@@ -83,8 +84,9 @@ export async function startCamera(videoElement, options = {}) {
         };
     }
 
-    // stop existing stream if any
+    // stop existing stream if any and generate a new session id
     stopCamera(videoElement);
+    const sessionId = ++currentCameraSessionId;
 
     setState(CameraState.REQUESTING);
     logToUI('Requesting camera permissions...', true, 'info');
@@ -98,8 +100,20 @@ export async function startCamera(videoElement, options = {}) {
         audio: false
     };
 
+    let stream = null;
     try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        // check if session was cancelled or superseded while permission was pending
+        if (sessionId !== currentCameraSessionId) {
+            stream.getTracks().forEach(track => {
+                try { track.stop(); } catch (e) { }
+            });
+            const cancelErr = new Error('Camera request was cancelled or superseded');
+            cancelErr.name = 'AbortError';
+            throw cancelErr;
+        }
+
         currentStream = stream;
         videoElement.srcObject = stream;
 
@@ -111,20 +125,46 @@ export async function startCamera(videoElement, options = {}) {
             };
         });
 
+        const timeoutMs = options.metadataTimeoutMs || 10000;
+
         return await new Promise((resolve, reject) => {
-            let hasResolved = false;
+            let settled = false;
+            let timeoutTimer = null;
+
+            const cleanup = () => {
+                if (timeoutTimer) {
+                    clearTimeout(timeoutTimer);
+                    timeoutTimer = null;
+                }
+                if (typeof videoElement.removeEventListener === 'function') {
+                    videoElement.removeEventListener('loadedmetadata', onLoaded);
+                } else {
+                    videoElement.onloadedmetadata = null;
+                }
+            };
 
             const onLoaded = () => {
-                if (hasResolved) return;
-                hasResolved = true;
+                if (settled) return;
+                settled = true;
+                cleanup();
+
+                if (sessionId !== currentCameraSessionId) {
+                    stopCamera(videoElement);
+                    const err = new Error('Camera session aborted');
+                    err.name = 'AbortError';
+                    reject(err);
+                    return;
+                }
 
                 const width = videoElement.videoWidth || 640;
                 const height = videoElement.videoHeight || 480;
                 currentAspectRatio = height > 0 ? (width / height) : (4 / 3);
 
-                videoElement.play().catch(playErr => {
-                    logToUI(`Camera autoplay blocked: ${playErr.message}`, false, 'warn');
-                });
+                if (typeof videoElement.play === 'function') {
+                    videoElement.play().catch(playErr => {
+                        logToUI(`Camera autoplay blocked: ${playErr.message}`, false, 'warn');
+                    });
+                }
 
                 setState(CameraState.STREAMING);
                 logToUI(`Camera active (${width}x${height}, aspect ratio ${currentAspectRatio.toFixed(2)})`, false, 'success');
@@ -138,29 +178,41 @@ export async function startCamera(videoElement, options = {}) {
                 });
             };
 
-            videoElement.onloadedmetadata = onLoaded;
+            const onFailure = (err) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                stopCamera(videoElement);
+                setState(CameraState.ERROR, err);
+                reject(err);
+            };
 
-            // in case onloadedmetadata already fired before hook
-            if (videoElement.readyState >= 1) {
-                onLoaded();
+            if (typeof videoElement.addEventListener === 'function') {
+                videoElement.addEventListener('loadedmetadata', onLoaded);
+            } else {
+                videoElement.onloadedmetadata = onLoaded;
             }
 
-            // timeout safety to prevent hanging promise if metadata never arrives
-            setTimeout(() => {
-                if (!hasResolved) {
-                    hasResolved = true;
-                    if (videoElement.videoWidth > 0) {
-                        onLoaded();
-                    } else {
-                        const timeoutErr = new Error('Camera metadata load timed out after 10 seconds');
-                        stopCamera(videoElement);
-                        setState(CameraState.ERROR, timeoutErr);
-                        reject(timeoutErr);
-                    }
+            // in case readyState indicates metadata is already available
+            if (videoElement.readyState >= 1 && (videoElement.videoWidth > 0 || videoElement.videoHeight > 0)) {
+                onLoaded();
+                return;
+            }
+
+            timeoutTimer = setTimeout(() => {
+                if (settled) return;
+                if (videoElement.videoWidth > 0) {
+                    onLoaded();
+                } else {
+                    const timeoutErr = new Error(`Camera metadata load timed out after ${timeoutMs / 1000}s`);
+                    onFailure(timeoutErr);
                 }
-            }, 10000);
+            }, timeoutMs);
         });
     } catch (err) {
+        if (err.name === 'AbortError') {
+            throw err;
+        }
         let classifiedReason = 'Unknown camera failure';
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
             setState(CameraState.DENIED, err);
@@ -187,6 +239,8 @@ export async function startCamera(videoElement, options = {}) {
  * @param {HTMLVideoElement} videoElement
  */
 export function stopCamera(videoElement) {
+    currentCameraSessionId++;
+
     if (currentStream) {
         currentStream.getTracks().forEach(track => {
             try {
@@ -200,6 +254,7 @@ export function stopCamera(videoElement) {
 
     if (videoElement) {
         videoElement.srcObject = null;
+        if (videoElement.onloadedmetadata) videoElement.onloadedmetadata = null;
     }
 
     if (currentState !== CameraState.NO_CAMERA && currentState !== CameraState.DENIED) {
