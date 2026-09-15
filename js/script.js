@@ -2,7 +2,7 @@
 
 import { logToUI, setLogContainer } from './logger.js';
 import { startCamera, stopCamera, retryCamera, enableNoCameraMode, getCameraState, CameraState, subscribeCameraState } from './camera.js';
-import { initDetector, initGazeDataExtract, getDiagnosticsSnapshot, setLandmarkOverlayEnabled, disposeSession, setFaceAdapter, getActiveAdapter } from './gaze-tracker.js';
+import { initDetector, initGazeDataExtract, stopTrackingLoop, drainInference, getDiagnosticsSnapshot, setLandmarkOverlayEnabled, disposeSession, setFaceAdapter, getActiveAdapter } from './gaze-tracker.js';
 import { startCalibration, showCalibration, checkExistingCalibration, checkExistingModel, clearAllCalibrationStorage } from './calibration.js';
 import { train, loadStoredGazeModel, gazeModel } from './regression_model.js';
 import { AdapterBenchmarkRunner } from './tracking/adapter-benchmark.js';
@@ -10,40 +10,85 @@ import { AdapterBenchmarkRunner } from './tracking/adapter-benchmark.js';
 let videoElement = null;
 let telemetryInterval = null;
 let benchmarkRunner = new AdapterBenchmarkRunner();
+let isStartupInProgress = false;
+
+function setControlsDisabled(disabled) {
+    const ids = ['run-benchmark-btn', 'reset-calibration-btn', 'retry-camera-btn', 'no-camera-btn'];
+    for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+    }
+}
 
 /**
- * setup and orchestrate gaze tracking pipeline with complete failure recovery
+ * setup and orchestrate gaze tracking pipeline with complete failure recovery and decoupled training
  */
 async function setupTracking() {
+    if (isStartupInProgress) return;
+    isStartupInProgress = true;
+    setControlsDisabled(true);
+
     logToUI('Initializing IWAT Testing Environment...', true, 'info');
 
     videoElement = document.getElementById('webcam-video');
     if (!videoElement) {
         logToUI('Fatal: Webcam video element not found in DOM.', true, 'error');
+        isStartupInProgress = false;
+        setControlsDisabled(false);
         return;
     }
 
-    // 1. initialize camera with error recovery
+    // 1. initialize camera with error recovery & timing
+    let tCamera = 0;
     try {
+        const t0 = performance.now();
         await startCamera(videoElement);
+        tCamera = performance.now() - t0;
+        logToUI(`Camera connected (${tCamera.toFixed(0)} ms).`, false, 'info');
     } catch (cameraErr) {
         logToUI(`Camera startup stopped: ${cameraErr.message}. You may retry or switch to No-Camera Mode.`, false, 'warn');
         updateCameraUIControls(getCameraState());
+        isStartupInProgress = false;
+        setControlsDisabled(false);
         return; // halt until user clicks Retry or No-Camera Mode
     }
 
     updateCameraUIControls(CameraState.STREAMING);
 
-    // 2. initialize face detector
+    // 2. initialize face detector adapter with timing
     let detector = null;
+    let tDetector = 0;
     try {
+        logToUI('Loading face detector adapter...', false, 'info');
+        const t0 = performance.now();
         detector = await initDetector();
+        tDetector = performance.now() - t0;
+        logToUI(`Detector initialized (${tDetector.toFixed(0)} ms).`, false, 'info');
     } catch (detectorErr) {
         logToUI(`Detector failed to load: ${detectorErr.message}. Check network connection or WebGL support.`, true, 'error');
+        isStartupInProgress = false;
+        setControlsDisabled(false);
         return;
     }
 
-    // 3. check existing calibration and model with corrupt storage recovery
+    // 3. Measure cold vs. warm inference before starting live loop (F5.1)
+    let tCold = 0;
+    let tWarm = 0;
+    try {
+        const tCold0 = performance.now();
+        await detector.estimateFaces(videoElement);
+        tCold = performance.now() - tCold0;
+
+        const tWarm0 = performance.now();
+        await detector.estimateFaces(videoElement);
+        tWarm = performance.now() - tWarm0;
+
+        logToUI(`Startup breakdown: Camera=${tCamera.toFixed(0)}ms | Detector=${tDetector.toFixed(0)}ms | Cold=${tCold.toFixed(0)}ms | Warm=${tWarm.toFixed(0)}ms`, true, 'info');
+    } catch (warmupErr) {
+        logToUI(`Inference warmup warning: ${warmupErr.message}`, false, 'warn');
+    }
+
+    // 4. check existing calibration and model with corrupt storage recovery
     const existingData = checkExistingCalibration();
     const existingModel = await checkExistingModel();
 
@@ -53,31 +98,51 @@ async function setupTracking() {
 
         if (loadedModel) {
             initGazeDataExtract(videoElement, detector);
+            isStartupInProgress = false;
+            setControlsDisabled(false);
             return;
         } else {
-            logToUI('Stored model could not be loaded. Falling back to retraining from existing calibration data...', true, 'warn');
-            const [x_train, y_train] = existingData;
-            initGazeDataExtract(videoElement, detector, async () => {
-                await train(x_train, y_train);
-            });
+            logToUI('Stored model could not be loaded. Retraining from calibration (live camera loop paused)...', true, 'warn');
+            const [x_train, y_train, meta] = existingData;
+            // Run training decoupled from live loop to prevent WebGL GPU contention
+            await train(x_train, y_train, { targetIds: meta?.targetIds });
+            initGazeDataExtract(videoElement, detector);
+            isStartupInProgress = false;
+            setControlsDisabled(false);
             return;
         }
     }
 
     if (existingData) {
-        logToUI('Found existing calibration data. Retraining model...', true, 'info');
-        const [x_train, y_train] = existingData;
-        initGazeDataExtract(videoElement, detector, async () => {
-            await train(x_train, y_train);
-        });
-    } else {
-        logToUI('No existing calibration found. Preparing calibration overlay...', true, 'info');
-        initGazeDataExtract(videoElement, detector, showCalibration);
-        const data = await startCalibration();
-        if (data) {
-            const [x_train, y_train] = data;
-            await train(x_train, y_train);
+        logToUI('Found existing calibration data. Retraining model (live camera loop paused)...', true, 'info');
+        const [x_train, y_train, meta] = existingData;
+        await train(x_train, y_train, { targetIds: meta?.targetIds });
+        initGazeDataExtract(videoElement, detector);
+        isStartupInProgress = false;
+        setControlsDisabled(false);
+        return;
+    }
+
+    // 5. No existing calibration: run sequential fixation calibration with active feed, then train decoupled
+    logToUI('No existing calibration found. Preparing calibration overlay...', true, 'info');
+    initGazeDataExtract(videoElement, detector, showCalibration);
+    isStartupInProgress = false;
+    setControlsDisabled(false);
+
+    const data = await startCalibration();
+    if (data) {
+        const [x_train, y_train, meta] = data;
+        logToUI('Calibration targets complete. Pausing camera loop to train regression model...', true, 'info');
+        stopTrackingLoop();
+        await drainInference();
+
+        const trainResult = await train(x_train, y_train, { targetIds: meta?.targetIds });
+        if (trainResult && trainResult.success) {
+            logToUI('Model trained and validated. Resuming gaze tracking.', false, 'success');
+        } else {
+            logToUI('Coarse gaze gate not passed. Recalibration recommended.', true, 'warn');
         }
+        initGazeDataExtract(videoElement, detector);
     }
 }
 
@@ -115,27 +180,37 @@ function startTelemetryLoop() {
         const snap = getDiagnosticsSnapshot();
 
         // update HUD elements
-        setText('diag-state', snap.hasFace ? (snap.isBlinking ? 'Blinking' : 'Tracking') : 'Face Lost');
+        let stateText = 'Initializing';
+        let stateColor = '#888';
+
+        if (snap.stalled) {
+            stateText = 'Feed Stalled';
+            stateColor = '#ff3b30';
+        } else if (snap.hasFace) {
+            if (snap.isBlinking) {
+                stateText = 'Blinking';
+                stateColor = '#ffcc00';
+            } else {
+                stateText = 'Tracking';
+                stateColor = '#34c759';
+            }
+        } else {
+            stateText = 'Face Lost';
+            stateColor = '#ff3b30';
+        }
+
+        setText('diag-state', stateText);
+        const stateEl = document.getElementById('diag-state');
+        if (stateEl) stateEl.style.color = stateColor;
+
         setText('diag-fps', `${snap.videoFps} fps`);
         setText('diag-latency', `${snap.inferenceLatencyMs} ms`);
         setText('diag-frame-age', `${snap.frameAgeMs} ms`);
-        setText('diag-coverage', `${snap.detectionCoveragePercent}%`);
+        setText('diag-coverage', `${snap.detectionCoveragePercent}% (face: ${snap.faceCoveragePercent}%)`);
         setText('diag-ear', snap.ear !== null ? snap.ear.toFixed(2) : '--');
         setText('diag-blinks', `${snap.blinksPerMin}/m`);
         setText('diag-tensors', `${snap.activeTensors}`);
-        setText('diag-dropped', `${snap.droppedFrames}`);
-
-        // state indicator color
-        const stateEl = document.getElementById('diag-state');
-        if (stateEl) {
-            if (snap.hasFace && !snap.isBlinking) {
-                stateEl.style.color = '#34c759';
-            } else if (snap.isBlinking) {
-                stateEl.style.color = '#ffcc00';
-            } else {
-                stateEl.style.color = '#ff3b30';
-            }
-        }
+        setText('diag-dropped', `${snap.droppedFrames} (skip: ${snap.skippedFrames})`);
     }, 250);
 }
 
@@ -145,16 +220,27 @@ function setText(id, text) {
 }
 
 /**
- * run adapter benchmark and display results
+ * run adapter benchmark safely decoupled from production tracking
  */
 async function triggerAdapterBenchmark() {
+    if (benchmarkRunner.isRunning) {
+        logToUI('Benchmark is already in progress.', false, 'warn');
+        return;
+    }
+
     const modal = document.getElementById('benchmark-modal');
     const modalBody = document.getElementById('benchmark-modal-body');
     const progressEl = document.getElementById('benchmark-progress');
 
     if (modal) modal.style.display = 'flex';
     if (progressEl) progressEl.textContent = 'Preparing benchmark suite...';
-    if (modalBody) modalBody.innerHTML = '<p>Running benchmark iterations across standard scenarios (16:9, 4:3, 1:1, head turn, blink, face loss)...</p>';
+    if (modalBody) modalBody.innerHTML = '<p>Pausing live tracking to ensure isolated benchmark execution...</p>';
+
+    setControlsDisabled(true);
+
+    // Pause production tracking loop and drain pending inference
+    stopTrackingLoop();
+    await drainInference();
 
     try {
         const report = await benchmarkRunner.runBenchmark({
@@ -167,6 +253,12 @@ async function triggerAdapterBenchmark() {
         renderBenchmarkReport(report, modalBody);
     } catch (err) {
         if (modalBody) modalBody.innerHTML = `<p style="color: #ff3b30;">Benchmark Error: ${err.message}</p>`;
+    } finally {
+        setControlsDisabled(false);
+        // Safely restore production tracking with active adapter
+        if (videoElement && getCameraState() === CameraState.STREAMING) {
+            initGazeDataExtract(videoElement, getActiveAdapter());
+        }
     }
 }
 
