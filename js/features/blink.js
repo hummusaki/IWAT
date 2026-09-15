@@ -40,12 +40,14 @@ export class BlinkDetector {
      * @param {number} options.openThreshold - EAR above this is considered open (default 0.23)
      * @param {number} options.minDurationMs - minimum duration for a valid blink (default 50ms)
      * @param {number} options.maxDurationMs - maximum duration for a normal blink (default 500ms)
+     * @param {number} options.maxAllowedGapMs - time gap after which in-flight blink is reset (default 1000ms)
      */
     constructor(options = {}) {
         this.closedThreshold = options.closedThreshold || 0.18;
         this.openThreshold = options.openThreshold || 0.23;
         this.minDurationMs = options.minDurationMs || 50;
         this.maxDurationMs = options.maxDurationMs || 500;
+        this.maxAllowedGapMs = options.maxAllowedGapMs || 1000;
 
         this.state = BlinkState.OPEN;
         this.blinkStartTime = 0;
@@ -53,6 +55,7 @@ export class BlinkDetector {
         this.totalBlinkCount = 0;
         this.recentBlinks = []; // timestamps of blinks within rolling window
         this.rollingWindowMs = 60000; // 1 minute window for blink rate
+        this.lastTimestamp = 0;
     }
 
     /** jsdoc
@@ -66,12 +69,19 @@ export class BlinkDetector {
      *   leftEAR: number|null,
      *   rightEAR: number|null,
      *   avgEAR: number|null,
+     *   measurementAvailable: boolean,
      *   totalBlinks: number,
      *   lastBlinkDuration: number,
      *   blinksPerMinute: number
      * }}
      */
     update(leftKeypoints, rightKeypoints, timestamp = performance.now()) {
+        // Detect excessive time gaps between frames (e.g. background tab or camera stall)
+        if (this.lastTimestamp > 0 && (timestamp - this.lastTimestamp) > this.maxAllowedGapMs) {
+            this.resetInFlightBlink();
+        }
+        this.lastTimestamp = timestamp;
+
         const leftEAR = computeEyeAspectRatio(
             leftKeypoints?.top,
             leftKeypoints?.bottom,
@@ -94,14 +104,16 @@ export class BlinkDetector {
             avgEAR = rightEAR;
         }
 
-        // if eyes cannot be measured (e.g. keypoint failure), preserve state but report invalid EAR
+        // if eyes cannot be measured (e.g. face loss, landmark failure), reset in-flight episode
         if (avgEAR === null) {
+            this.resetInFlightBlink();
             return {
-                isBlinking: this.state === BlinkState.CLOSED || this.state === BlinkState.CLOSING,
+                isBlinking: false,
                 state: this.state,
                 leftEAR: null,
                 rightEAR: null,
                 avgEAR: null,
+                measurementAvailable: false,
                 totalBlinks: this.totalBlinkCount,
                 lastBlinkDuration: this.lastBlinkDuration,
                 blinksPerMinute: this.getBlinksPerMinute(timestamp)
@@ -121,7 +133,17 @@ export class BlinkDetector {
                 if (avgEAR < this.closedThreshold) {
                     this.state = BlinkState.CLOSED;
                 } else if (avgEAR >= this.openThreshold) {
-                    this.state = BlinkState.OPEN;
+                    // Reopening occurred after a single observation closure (common at 10-15 Hz)
+                    const duration = timestamp - this.blinkStartTime;
+                    if (duration >= this.minDurationMs && duration <= this.maxDurationMs) {
+                        this.totalBlinkCount++;
+                        this.lastBlinkDuration = duration;
+                        this.recentBlinks.push(timestamp);
+                        this.state = BlinkState.RECOVERING;
+                    } else {
+                        // aborted noise dip or prolonged gap
+                        this.state = BlinkState.OPEN;
+                    }
                 }
                 break;
 
@@ -141,7 +163,7 @@ export class BlinkDetector {
                 if (avgEAR >= this.openThreshold) {
                     this.state = BlinkState.OPEN;
                 } else if (avgEAR < this.closedThreshold) {
-                    this.state = BlinkState.CLOSED;
+                    this.state = BlinkState.CLOSING;
                     this.blinkStartTime = timestamp;
                 }
                 break;
@@ -161,10 +183,18 @@ export class BlinkDetector {
             leftEAR: leftEAR !== null ? parseFloat(leftEAR.toFixed(3)) : null,
             rightEAR: rightEAR !== null ? parseFloat(rightEAR.toFixed(3)) : null,
             avgEAR: parseFloat(avgEAR.toFixed(3)),
+            measurementAvailable: true,
             totalBlinks: this.totalBlinkCount,
             lastBlinkDuration: Math.round(this.lastBlinkDuration),
             blinksPerMinute: this.getBlinksPerMinute(timestamp)
         };
+    }
+
+    resetInFlightBlink() {
+        if (this.state !== BlinkState.OPEN) {
+            this.state = BlinkState.OPEN;
+        }
+        this.blinkStartTime = 0;
     }
 
     getBlinksPerMinute(timestamp = performance.now()) {
@@ -179,5 +209,6 @@ export class BlinkDetector {
         this.lastBlinkDuration = 0;
         this.totalBlinkCount = 0;
         this.recentBlinks = [];
+        this.lastTimestamp = 0;
     }
 }
