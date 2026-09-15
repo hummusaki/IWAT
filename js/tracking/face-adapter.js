@@ -99,7 +99,7 @@ export class TfjsFaceMeshAdapter extends FaceAdapter {
             }));
         } catch (err) {
             console.error('Error during TFJS face estimation:', err);
-            return [];
+            throw err;
         }
     }
 
@@ -236,7 +236,7 @@ export class MediaPipeVisionFaceAdapter extends FaceAdapter {
             });
         } catch (err) {
             console.error('Error during MediaPipe face estimation:', err);
-            return [];
+            throw err;
         }
     }
 
