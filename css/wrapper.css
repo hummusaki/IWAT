@@ -34,13 +34,14 @@ body {
 
 /* right panel - 30% */
 .control-panel {
-    flex: 0 0 auto;
-    width: 20%;
+    flex: 0 0 340px;
+    width: 340px;
     height: 100%;
     display: flex;
     flex-direction: column;
     background-color: #252526;
     color: #cccccc;
+    overflow-y: auto;
 }
 
 .panel-header {
@@ -66,6 +67,7 @@ body {
     position: relative;
     border-bottom: 1px solid #333;
     overflow: hidden;
+    min-height: 200px;
 }
 
 #webcam-video {
@@ -76,48 +78,205 @@ body {
     /* mirror effect */
 }
 
-.overlay-text {
+.webcam-overlay {
     position: absolute;
-    bottom: 10px;
-    left: 10px;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.7);
-    background: rgba(0, 0, 0, 0.5);
-    padding: 2px 6px;
-    border-radius: 3px;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    transform: scaleX(-1);
+    /* mirror overlay to align with video */
 }
 
-/* logging area */
-.project-info-container {
-    padding: 10px 20px;
+.overlay-text {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(0, 0, 0, 0.65);
+    padding: 3px 7px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+/* Camera action controls */
+.camera-controls-container {
+    padding: 8px 12px;
+    background-color: #1f1f21;
+    border-bottom: 1px solid #333;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.control-action-btn {
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background: #007acc;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.control-action-btn:hover {
+    background: #005999;
+}
+
+.control-action-btn.secondary {
+    background: #3e3e42;
+    border-color: #555;
+}
+
+.control-action-btn.secondary:hover {
+    background: #4e4e52;
+}
+
+.toggle-control {
+    font-size: 11px;
+    color: #aaa;
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+}
+
+.toggle-control label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+/* Diagnostics HUD */
+.diagnostics-panel {
+    padding: 10px 14px;
     background-color: #1e1e1e;
     border-bottom: 1px solid #333;
 }
 
-.project-info-container p {
-    margin: 0;
-    font-size: 12px;
-    color: #ffffff;
+.diagnostics-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
 }
 
-.project-info-container a {
-    color: #ffffff;
+.diagnostics-header h4 {
+    margin: 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #888;
+}
+
+.status-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #34c759;
+    font-family: monospace;
+}
+
+.diagnostics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px 10px;
+}
+
+.diag-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    padding: 2px 0;
+    border-bottom: 1px dotted #2d2d30;
+}
+
+.diag-label {
+    color: #888;
+}
+
+.diag-value {
+    color: #4ec9b0;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 10.5px;
+}
+
+/* logging area */
+.project-info-container {
+    padding: 10px 14px;
+    background-color: #1e1e1e;
+    border-bottom: 1px solid #333;
+}
+
+.button-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.reset-btn, .benchmark-btn {
+    flex: 1;
+    padding: 7px 10px;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    transition: background-color 0.2s;
+    text-align: center;
+}
+
+.reset-btn {
+    background-color: #d63031;
+}
+
+.reset-btn:hover {
+    background-color: #b71c1c;
+}
+
+.benchmark-btn {
+    background-color: #6c5ce7;
+}
+
+.benchmark-btn:hover {
+    background-color: #5541d7;
+}
+
+.footnote {
+    margin: 0;
+    font-size: 11px;
+    color: #888;
+}
+
+.footnote a {
+    color: #9cdcfe;
+    text-decoration: none;
+}
+
+.footnote a:hover {
+    text-decoration: underline;
 }
 
 .log-container {
     flex: 1 1 0;
-    /* grow: 1, shrink: 1, basis: 0 */
     display: flex;
     flex-direction: column;
-    padding: 15px;
+    padding: 12px 14px;
     overflow: hidden;
-    min-height: 0;
-    /* prevents the container from stretching past the screen height */
+    min-height: 180px;
 }
 
 .log-container h3 {
-    margin: 0 0 10px 0;
-    font-size: 12px;
+    margin: 0 0 8px 0;
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 1px;
     color: #888;
@@ -125,23 +284,22 @@ body {
 
 .logs {
     flex: 1 1 0;
-    /* grow: 1, shrink: 1, basis: 0 */
     overflow-y: auto;
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-    font-size: 12px;
-    line-height: 1.6;
+    font-size: 11px;
+    line-height: 1.5;
     color: #9cdcfe;
     padding-right: 5px;
     min-height: 0;
 }
 
-.logs div {
+.logs .log-entry {
     margin-bottom: 4px;
 }
 
 .logs .log-time {
     color: #858585;
-    margin-right: 8px;
+    margin-right: 6px;
 }
 
 .logs .log-action {
@@ -155,22 +313,37 @@ body {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-color: rgba(30, 30, 30, 0.4);
-    backdrop-filter: blur(2px);
+    background-color: rgba(18, 18, 18, 0.75);
+    backdrop-filter: blur(4px);
     z-index: 9999;
     display: flex;
     justify-content: center;
     align-items: center;
-    transition: opacity 0.5s ease;
+    transition: opacity 0.4s ease;
 }
 
 .calibration-instructions {
     text-align: center;
     color: white;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 20px 40px;
-    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.85);
+    padding: 24px 36px;
+    border-radius: 12px;
+    border: 1px solid #444;
     pointer-events: none;
+    max-width: 480px;
+}
+
+.calibration-instructions h2 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 20px;
+}
+
+.calibration-instructions p {
+    margin: 0;
+    font-size: 13px;
+    color: #bbb;
+    line-height: 1.5;
 }
 
 .calibration-dot {
@@ -178,6 +351,7 @@ body {
     width: 40px;
     height: 40px;
     background-color: #ff3b30;
+    border: 2px solid #fff;
     border-radius: 50%;
     cursor: pointer;
     display: flex;
@@ -186,16 +360,131 @@ body {
     color: white;
     font-weight: bold;
     user-select: none;
-    box-shadow: 0 0 10px rgba(255, 59, 48, 0.5);
-    transition: opacity 0.2s, background-color 0.3s, filter 0.1s;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    box-shadow: 0 0 12px rgba(255, 59, 48, 0.7);
+    transition: opacity 0.2s, background-color 0.3s, transform 0.1s;
+}
+
+.calibration-dot:hover {
+    transform: scale(1.08);
 }
 
 .calibration-dot:active {
-    filter: brightness(0.7);
+    transform: scale(0.95);
+    filter: brightness(0.8);
 }
 
 .calibration-dot.completed {
     background-color: #34c759;
-    box-shadow: 0 0 10px rgba(52, 199, 89, 0.5);
+    border-color: #a8ffb2;
+    box-shadow: 0 0 12px rgba(52, 199, 89, 0.7);
     cursor: default;
+    transform: scale(1);
+}
+
+#gaze-pointer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 22px;
+    height: 22px;
+    background-color: rgba(255, 59, 48, 0.85);
+    border: 2px solid white;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 10000;
+    transform: translate(-50%, -50%);
+    display: none;
+    box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    transition: background-color 0.15s ease;
+}
+
+/* Benchmark Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(5px);
+    z-index: 10001;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-card {
+    background: #252526;
+    border: 1px solid #444;
+    border-radius: 8px;
+    width: 650px;
+    max-width: 90vw;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    background: #1e1e1e;
+    border-bottom: 1px solid #333;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 15px;
+    color: #fff;
+}
+
+.modal-close {
+    font-size: 22px;
+    color: #888;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: #fff;
+}
+
+.benchmark-status {
+    padding: 8px 20px;
+    background: #2d2d30;
+    font-size: 11px;
+    color: #feca57;
+    font-family: monospace;
+    border-bottom: 1px solid #3a3a3d;
+}
+
+.modal-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    font-size: 13px;
+    color: #ddd;
+}
+
+.benchmark-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 12px;
+}
+
+.benchmark-table th, .benchmark-table td {
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid #333;
+}
+
+.benchmark-table th {
+    background: #1e1e1e;
+    color: #aaa;
+    font-weight: 600;
 }
