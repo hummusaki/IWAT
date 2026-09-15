@@ -110,9 +110,9 @@ export class AdapterBenchmarkRunner {
         logToUI('Starting Face Adapter Benchmark Suite...', true, 'info');
 
         const adaptersToTest = [
-            { id: 'tfjs', name: 'TFJS FaceMesh (Current)', create: () => new TfjsFaceMeshAdapter() },
-            { id: 'mediapipe-gpu', name: 'MediaPipe Vision Tasks (GPU)', create: () => new MediaPipeVisionFaceAdapter({ delegate: 'GPU' }) },
-            { id: 'mediapipe-cpu', name: 'MediaPipe Vision Tasks (CPU)', create: () => new MediaPipeVisionFaceAdapter({ delegate: 'CPU' }) }
+            { id: 'tfjs', name: 'TFJS FaceMesh (Current)', create: () => new TfjsFaceMeshAdapter(), isTfjs: true },
+            { id: 'mediapipe-gpu', name: 'MediaPipe Vision Tasks (GPU)', create: () => new MediaPipeVisionFaceAdapter({ delegate: 'GPU' }), isTfjs: false },
+            { id: 'mediapipe-cpu', name: 'MediaPipe Vision Tasks (CPU)', create: () => new MediaPipeVisionFaceAdapter({ delegate: 'CPU' }), isTfjs: false }
         ];
 
         // prepare test scenarios
@@ -133,145 +133,176 @@ export class AdapterBenchmarkRunner {
         const totalSteps = adaptersToTest.length * scenarios.length * iterations;
         let completedSteps = 0;
 
-        for (const adapterConfig of adaptersToTest) {
-            logToUI(`Benchmarking ${adapterConfig.name}...`, false, 'info');
-            const adapterResults = {
-                adapterId: adapterConfig.id,
-                adapterName: adapterConfig.name,
-                initTimeMs: 0,
-                initSuccess: false,
-                initError: null,
-                scenarios: {},
-                overallMetrics: {
-                    totalInferences: 0,
-                    latencies: [],
-                    facesDetected: 0,
-                    faceLossCorrectlyDetected: 0,
-                    tensorsLeaked: 0
-                }
-            };
-
-            let adapterInstance = null;
-            const initStart = performance.now();
-            const initialTensors = (typeof tf !== 'undefined' && tf.memory) ? tf.memory().numTensors : 0;
-
-            try {
-                adapterInstance = adapterConfig.create();
-                await adapterInstance.init();
-                adapterResults.initTimeMs = Math.round(performance.now() - initStart);
-                adapterResults.initSuccess = true;
-            } catch (initErr) {
-                adapterResults.initTimeMs = Math.round(performance.now() - initStart);
-                adapterResults.initSuccess = false;
-                adapterResults.initError = initErr.message;
-                logToUI(`${adapterConfig.name} failed initialization: ${initErr.message}`, false, 'warn');
-                results[adapterConfig.id] = adapterResults;
-                continue;
-            }
-
-            // warmup inference
-            try {
-                await adapterInstance.estimateFaces(scenarios[0].canvas, performance.now());
-            } catch (e) {
-                console.warn('Warmup error:', e);
-            }
-
-            // run scenarios
-            for (const scenario of scenarios) {
-                const scenarioResult = {
-                    id: scenario.id,
-                    description: scenario.desc,
-                    latencies: [],
-                    detectionCount: 0,
-                    detectedEARs: []
+        try {
+            for (const adapterConfig of adaptersToTest) {
+                logToUI(`Benchmarking ${adapterConfig.name}...`, false, 'info');
+                const adapterResults = {
+                    adapterId: adapterConfig.id,
+                    adapterName: adapterConfig.name,
+                    isTfjs: adapterConfig.isTfjs,
+                    initTimeMs: 0,
+                    initSuccess: false,
+                    initError: null,
+                    status: 'Not Evaluated',
+                    scenarios: {},
+                    overallMetrics: {
+                        totalInferences: 0,
+                        inferenceErrors: 0,
+                        latencies: [],
+                        facesDetected: 0,
+                        faceLossCorrectlyDetected: 0,
+                        modelTensorFootprint: adapterConfig.isTfjs ? 0 : 'N/A (WASM)',
+                        tensorsLeaked: adapterConfig.isTfjs ? 0 : 'N/A (WASM)'
+                    }
                 };
 
-                const inputSource = scenario.source || scenario.canvas;
+                let adapterInstance = null;
+                const initStart = performance.now();
+                const initialTensors = (adapterConfig.isTfjs && typeof tf !== 'undefined' && tf.memory) ? tf.memory().numTensors : 0;
 
-                for (let i = 0; i < iterations; i++) {
-                    const t0 = performance.now();
-                    let faces = [];
-                    try {
-                        faces = await adapterInstance.estimateFaces(inputSource, t0);
-                    } catch (infErr) {
-                        console.error('Inference error in benchmark:', infErr);
+                try {
+                    adapterInstance = adapterConfig.create();
+                    await adapterInstance.init();
+                    adapterResults.initTimeMs = Math.round(performance.now() - initStart);
+                    adapterResults.initSuccess = true;
+                } catch (initErr) {
+                    adapterResults.initTimeMs = Math.round(performance.now() - initStart);
+                    adapterResults.initSuccess = false;
+                    adapterResults.initError = initErr.message;
+                    adapterResults.status = 'Failed (Init)';
+                    logToUI(`${adapterConfig.name} failed initialization: ${initErr.message}`, false, 'warn');
+                    results[adapterConfig.id] = adapterResults;
+                    if (adapterInstance) {
+                        try { adapterInstance.dispose(); } catch (e) { }
                     }
-                    const t1 = performance.now();
-                    const latency = t1 - t0;
-
-                    scenarioResult.latencies.push(latency);
-                    adapterResults.overallMetrics.latencies.push(latency);
-                    adapterResults.overallMetrics.totalInferences++;
-
-                    const hasFace = (faces && faces.length > 0);
-                    if (hasFace) {
-                        scenarioResult.detectionCount++;
-                        adapterResults.overallMetrics.facesDetected++;
-
-                        // test landmark EAR if keypoints present
-                        const kp = faces[0].keypoints;
-                        if (kp && kp.length >= 468) {
-                            const leftEar = computeEyeAspectRatio(kp[159], kp[145], kp[133], kp[33]);
-                            if (leftEar !== null) scenarioResult.detectedEARs.push(leftEar);
-                        }
-                    } else if (scenario.id === 'no_face') {
-                        adapterResults.overallMetrics.faceLossCorrectlyDetected++;
-                    }
-
-                    completedSteps++;
-                    if (onProgress) {
-                        onProgress({
-                            stage: `${adapterConfig.name} - ${scenario.desc} (${i + 1}/${iterations})`,
-                            percent: Math.round((completedSteps / totalSteps) * 100)
-                        });
-                    }
-
-                    // yield thread for browser responsiveness
-                    await new Promise(r => setTimeout(r, 4));
+                    continue;
                 }
 
-                // compute scenario latency stats
-                scenarioResult.meanLatencyMs = Math.round(mean(scenarioResult.latencies) * 10) / 10;
-                scenarioResult.p50LatencyMs = Math.round(percentile(scenarioResult.latencies, 50) * 10) / 10;
-                scenarioResult.p95LatencyMs = Math.round(percentile(scenarioResult.latencies, 95) * 10) / 10;
-                scenarioResult.detectionRatePercent = Math.round((scenarioResult.detectionCount / iterations) * 100);
+                const postInitTensors = (adapterConfig.isTfjs && typeof tf !== 'undefined' && tf.memory) ? tf.memory().numTensors : 0;
+                if (adapterConfig.isTfjs) {
+                    adapterResults.overallMetrics.modelTensorFootprint = Math.max(0, postInitTensors - initialTensors);
+                }
 
-                adapterResults.scenarios[scenario.id] = scenarioResult;
+                // warmup inference
+                try {
+                    await adapterInstance.estimateFaces(scenarios[0].canvas, performance.now());
+                } catch (e) {
+                    console.warn('Warmup error:', e);
+                }
+
+                // run scenarios
+                try {
+                    for (const scenario of scenarios) {
+                        const scenarioResult = {
+                            id: scenario.id,
+                            description: scenario.desc,
+                            latencies: [],
+                            detectionCount: 0,
+                            errorCount: 0,
+                            detectedEARs: []
+                        };
+
+                        const inputSource = scenario.source || scenario.canvas;
+
+                        for (let i = 0; i < iterations; i++) {
+                            const t0 = performance.now();
+                            let faces = [];
+                            let hasError = false;
+
+                            try {
+                                faces = await adapterInstance.estimateFaces(inputSource, t0);
+                            } catch (infErr) {
+                                hasError = true;
+                                scenarioResult.errorCount++;
+                                adapterResults.overallMetrics.inferenceErrors++;
+                            }
+
+                            const t1 = performance.now();
+                            const latency = t1 - t0;
+
+                            scenarioResult.latencies.push(latency);
+                            adapterResults.overallMetrics.latencies.push(latency);
+                            adapterResults.overallMetrics.totalInferences++;
+
+                            const hasFace = !hasError && (faces && faces.length > 0);
+                            if (hasFace) {
+                                scenarioResult.detectionCount++;
+                                adapterResults.overallMetrics.facesDetected++;
+
+                                const kp = faces[0].keypoints;
+                                if (kp && kp.length >= 468) {
+                                    const leftEar = computeEyeAspectRatio(kp[159], kp[145], kp[133], kp[33]);
+                                    if (leftEar !== null) scenarioResult.detectedEARs.push(leftEar);
+                                }
+                            } else if (scenario.id === 'no_face' && !hasError) {
+                                adapterResults.overallMetrics.faceLossCorrectlyDetected++;
+                            }
+
+                            completedSteps++;
+                            if (onProgress) {
+                                onProgress({
+                                    stage: `${adapterConfig.name} - ${scenario.desc} (${i + 1}/${iterations})`,
+                                    percent: Math.round((completedSteps / totalSteps) * 100)
+                                });
+                            }
+
+                            await new Promise(r => setTimeout(r, 4));
+                        }
+
+                        // compute scenario latency stats
+                        scenarioResult.meanLatencyMs = Math.round(mean(scenarioResult.latencies) * 10) / 10;
+                        scenarioResult.p50LatencyMs = Math.round(percentile(scenarioResult.latencies, 50) * 10) / 10;
+                        scenarioResult.p95LatencyMs = Math.round(percentile(scenarioResult.latencies, 95) * 10) / 10;
+                        scenarioResult.detectionRatePercent = Math.round((scenarioResult.detectionCount / iterations) * 100);
+
+                        adapterResults.scenarios[scenario.id] = scenarioResult;
+                    }
+
+                    // compute overall latency distribution
+                    const allLats = adapterResults.overallMetrics.latencies;
+                    adapterResults.overallMetrics.meanLatencyMs = Math.round(mean(allLats) * 10) / 10;
+                    adapterResults.overallMetrics.p50LatencyMs = Math.round(percentile(allLats, 50) * 10) / 10;
+                    adapterResults.overallMetrics.p95LatencyMs = Math.round(percentile(allLats, 95) * 10) / 10;
+                    adapterResults.overallMetrics.minLatencyMs = Math.round(Math.min(...allLats) * 10) / 10;
+                    adapterResults.overallMetrics.maxLatencyMs = Math.round(Math.max(...allLats) * 10) / 10;
+
+                    if (adapterResults.overallMetrics.inferenceErrors > 0 && adapterResults.overallMetrics.inferenceErrors === adapterResults.overallMetrics.totalInferences) {
+                        adapterResults.status = 'Failed (Execution)';
+                    } else {
+                        adapterResults.status = 'Passed';
+                    }
+                } finally {
+                    // dispose adapter before computing final residual tensors
+                    if (adapterInstance) {
+                        try { adapterInstance.dispose(); } catch (e) { }
+                    }
+                    if (adapterConfig.isTfjs) {
+                        const postDisposalTensors = (typeof tf !== 'undefined' && tf.memory) ? tf.memory().numTensors : 0;
+                        adapterResults.overallMetrics.tensorsLeaked = Math.max(0, postDisposalTensors - initialTensors);
+                    }
+                }
+
+                results[adapterConfig.id] = adapterResults;
             }
 
-            // tensor check after test runs
-            const finalTensors = (typeof tf !== 'undefined' && tf.memory) ? tf.memory().numTensors : 0;
-            adapterResults.overallMetrics.tensorsLeaked = Math.max(0, finalTensors - initialTensors);
+            logToUI('Face Adapter Benchmark complete. Results generated.', false, 'success');
 
-            // compute overall latency distribution
-            const allLats = adapterResults.overallMetrics.latencies;
-            adapterResults.overallMetrics.meanLatencyMs = Math.round(mean(allLats) * 10) / 10;
-            adapterResults.overallMetrics.p50LatencyMs = Math.round(percentile(allLats, 50) * 10) / 10;
-            adapterResults.overallMetrics.p95LatencyMs = Math.round(percentile(allLats, 95) * 10) / 10;
-            adapterResults.overallMetrics.minLatencyMs = Math.round(Math.min(...allLats) * 10) / 10;
-            adapterResults.overallMetrics.maxLatencyMs = Math.round(Math.max(...allLats) * 10) / 10;
+            const report = {
+                timestamp: new Date().toISOString(),
+                iterationsPerScenario: iterations,
+                environment: {
+                    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Node.js',
+                    devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+                    hasWebGL: typeof document !== 'undefined' && !!document.createElement('canvas').getContext('webgl2')
+                },
+                results,
+                decisionNote: 'Per IMPLEMENTATION_PLAN.md: Adapter selection requires empirical benchmark verification. Do not switch adapters without verified reliability.'
+            };
 
-            // dispose adapter
-            adapterInstance.dispose();
-            results[adapterConfig.id] = adapterResults;
+            return report;
+        } finally {
+            this.isRunning = false;
         }
-
-        this.isRunning = false;
-        logToUI('Face Adapter Benchmark complete. Results generated.', false, 'success');
-
-        const report = {
-            timestamp: new Date().toISOString(),
-            iterationsPerScenario: iterations,
-            environment: {
-                userAgent: navigator.userAgent,
-                devicePixelRatio: window.devicePixelRatio || 1,
-                hasWebGL: !!document.createElement('canvas').getContext('webgl2')
-            },
-            results,
-            decisionNote: 'Per IMPLEMENTATION_PLAN.md: Adapter selection requires empirical benchmark verification. Do not switch adapters without verified reliability.'
-        };
-
-        return report;
     }
 }
 

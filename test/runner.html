@@ -97,7 +97,7 @@
 
     <script type="module">
         import { validateCalibrationData, checkExistingCalibration } from '../js/calibration.js';
-        import { predictGaze, setGazeModel, disposeGazeModel } from '../js/regression_model.js';
+        import { predictGaze, setGazeModel, disposeGazeModel, train } from '../js/regression_model.js';
         import { computeEyeAspectRatio, BlinkDetector } from '../js/features/blink.js';
         import { computeProcessingCanvasDimensions, getRelativePupilPos, buildGazeFeatureVector } from '../js/features/geometry.js';
         import { QualityGate } from '../js/features/quality.js';
@@ -156,55 +156,71 @@
             return `TFJS version: ${tf.version.tfjs} (pinned)\nFaceLandmarksDetection: loaded (pinned)\nTasksVision: ${typeof TasksVision !== 'undefined' || typeof tasksVision !== 'undefined' ? 'loaded' : 'available via CDN'}`;
         });
 
-        // Test 2: Tensor Leakage & tf.tidy() Verification (Zero Monotonic Tensor Growth)
-        registerTest('2. Tensor Leak Prevention (100 Iterations)', async () => {
-            // Create a dummy model
+        // Test 2: Tensor Leakage & tf.tidy() Verification (Prediction & Training Lifecycle)
+        registerTest('2. Tensor Leak Prevention (100 Iterations & Training Lifecycle)', async () => {
+            // 1. Create a dummy model and test 100 predictions inside tf.tidy
             const model = tf.sequential();
             model.add(tf.layers.dense({ inputShape: [4], units: 2, activation: 'linear' }));
             model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
             setGazeModel(model);
 
-            // Baseline tensor count
             const initialTensors = tf.memory().numTensors;
 
-            // Run 100 predictions
             for (let i = 0; i < 100; i++) {
                 const pred = predictGaze([0.1, 0.2, 0.3, 0.4]);
                 if (!pred || pred.length !== 2) throw new Error('Prediction returned invalid output');
             }
 
-            const finalTensors = tf.memory().numTensors;
+            const tensorsAfterPredictions = tf.memory().numTensors;
             disposeGazeModel();
 
-            if (finalTensors !== initialTensors) {
-                throw new Error(`Tensor leak detected! Initial: ${initialTensors}, Final: ${finalTensors}, Leaked: ${finalTensors - initialTensors}`);
+            if (tensorsAfterPredictions !== initialTensors) {
+                throw new Error(`Prediction tensor leak! Initial: ${initialTensors}, After 100 preds: ${tensorsAfterPredictions}`);
             }
 
-            return `Initial active tensors: ${initialTensors}\nFinal active tensors after 100 predictions: ${finalTensors}\nNet leaked tensors: 0 (PASSED)`;
+            // 2. Test training lifecycle residual tensor cleanup
+            const baselineBeforeTrain = tf.memory().numTensors;
+            const xSynthetic = [];
+            const ySynthetic = [];
+            for (let i = 0; i < 20; i++) {
+                xSynthetic.push([0.1 + (i % 3) * 0.05, 0.1 + Math.floor(i / 3) * 0.05, 0.1 + (i % 3) * 0.05, 0.1 + Math.floor(i / 3) * 0.05]);
+                ySynthetic.push([(i % 3) * 0.4 + 0.1, Math.floor(i / 3) * 0.4 + 0.1]);
+            }
+            await train(xSynthetic, ySynthetic);
+            disposeGazeModel();
+
+            const finalTensors = tf.memory().numTensors;
+            const residualTensors = finalTensors - baselineBeforeTrain;
+            if (residualTensors > 0) {
+                throw new Error(`Training lifecycle tensor leak! Leaked: ${residualTensors}`);
+            }
+
+            return `Predictions: 100 iterations executed with zero leaked tensors.\nTraining lifecycle: fit & candidate disposal returned cleanly to baseline.\nNet residual tensors: 0 (PASSED)`;
         });
 
-        // Test 3: Storage Corruption Self-Healing
-        registerTest('3. Calibration Storage Corruption Recovery', async () => {
-            const key = 'IWAT_calibration_v4';
+        // Test 3: Storage Corruption Self-Healing (Isolated from Application Data)
+        registerTest('3. Calibration Storage Corruption Recovery (Isolated Key)', async () => {
+            const testKey = 'IWAT_test_isolated_calib';
 
             // 1. Corrupt JSON string
-            localStorage.setItem(key, '{ invalid json syntax ...');
-            const res1 = checkExistingCalibration();
+            localStorage.setItem(testKey, '{ invalid json syntax ...');
+            const res1 = checkExistingCalibration(testKey);
             if (res1 !== null) throw new Error('Expected checkExistingCalibration to return null on invalid JSON');
-            if (localStorage.getItem(key) !== null) throw new Error('Expected corrupt key to be purged from localStorage');
+            if (localStorage.getItem(testKey) !== null) throw new Error('Expected corrupt key to be purged from localStorage');
 
             // 2. Corrupt schema with NaN
             const corruptSchema = {
-                version: 4,
+                version: 5,
+                committed: true,
                 x_train: [[0.1, NaN, 0.3, 0.4], [0.1, 0.2, 0.3, 0.4]],
                 y_train: [[0.5, 0.5], [0.5, 0.5]]
             };
-            localStorage.setItem(key, JSON.stringify(corruptSchema));
-            const res2 = checkExistingCalibration();
+            localStorage.setItem(testKey, JSON.stringify(corruptSchema));
+            const res2 = checkExistingCalibration(testKey);
             if (res2 !== null) throw new Error('Expected checkExistingCalibration to return null on NaN coordinates');
-            if (localStorage.getItem(key) !== null) throw new Error('Expected corrupt schema to be purged from localStorage');
+            if (localStorage.getItem(testKey) !== null) throw new Error('Expected corrupt schema to be purged from localStorage');
 
-            return 'Corrupted JSON string purged cleanly.\nSchema with non-finite NaN coordinates purged cleanly.\nZero crashes or unhandled exceptions.';
+            return 'Corrupted JSON string purged cleanly.\nSchema with non-finite NaN coordinates purged cleanly.\nTest key isolated; application production calibration preserved.';
         });
 
         // Test 4: Aspect Ratio Preservation
@@ -222,9 +238,9 @@
             return `1080p (16:9) scaled to: ${dims16_9.width}x${dims16_9.height} (preserved ratio: ${(dims16_9.width/dims16_9.height).toFixed(2)})\nVGA (4:3) scaled to: ${dims4_3.width}x${dims4_3.height} (preserved ratio: ${(dims4_3.width/dims4_3.height).toFixed(2)})`;
         });
 
-        // Test 5: Bilateral EAR & Blink State Machine
+        // Test 5: Bilateral EAR & Blink State Machine (Temporal Contract)
         registerTest('5. Bilateral EAR & Temporal Blink State Machine', async () => {
-            const detector = new BlinkDetector();
+            const detector = new BlinkDetector({ minDurationMs: 50 });
             const makeKeypoints = (ear) => ({
                 top: { x: 25, y: 0 },
                 bottom: { x: 25, y: 50 * ear },
@@ -233,26 +249,43 @@
             });
 
             let t = 1000;
+            // 1. Normal open eyes (EAR 0.3)
             let r1 = detector.update(makeKeypoints(0.3), makeKeypoints(0.3), t);
             if (r1.isBlinking) throw new Error('Expected not blinking at EAR 0.3');
 
+            // 2. Closed observation lasting 70ms (> 50ms minDuration)
             t += 40;
             let r2 = detector.update(makeKeypoints(0.12), makeKeypoints(0.12), t);
             if (!r2.isBlinking) throw new Error('Expected blinking at EAR 0.12');
 
-            t += 60;
+            t += 70;
             let r3 = detector.update(makeKeypoints(0.28), makeKeypoints(0.28), t);
             if (r3.isBlinking) throw new Error('Expected blink recovery at EAR 0.28');
             if (r3.totalBlinks !== 1) throw new Error(`Expected 1 total blink, got ${r3.totalBlinks}`);
 
-            return `Blink detected accurately with bilateral EAR.\nMeasured duration: ${r3.lastBlinkDuration} ms\nTotal registered blinks: ${r3.totalBlinks}`;
+            // 3. Aborted noise dip below minDuration (30ms < 50ms)
+            t += 100;
+            detector.update(makeKeypoints(0.3), makeKeypoints(0.3), t);
+            t += 20;
+            detector.update(makeKeypoints(0.12), makeKeypoints(0.12), t); // closed
+            t += 10;
+            let rNoise = detector.update(makeKeypoints(0.3), makeKeypoints(0.3), t); // reopened after only 10ms
+            if (rNoise.totalBlinks !== 1) throw new Error('Noise dip below minDuration should not increment blink count');
+
+            // 4. Face loss resets in-flight episode
+            t += 100;
+            detector.update(makeKeypoints(0.12), makeKeypoints(0.12), t); // closing
+            let rFaceLoss = detector.update(null, null, t + 40); // face lost
+            if (rFaceLoss.isBlinking) throw new Error('Face loss should reset blinking state');
+
+            return `Blink contract verified:\n- Complete valid blink registered (duration: ${r3.lastBlinkDuration} ms)\n- Sub-50ms noise dip filtered\n- Face loss resets in-flight episode cleanly`;
         });
 
         // Test 6: Face Adapter Benchmark Runner (Synthetic Scenarios)
         registerTest('6. Face Adapter Benchmark Execution', async () => {
             const runner = new AdapterBenchmarkRunner();
             const report = await runner.runBenchmark({
-                iterationsPerScenario: 3
+                iterationsPerScenario: 2
             });
 
             if (!report.results || !report.results.tfjs) {
@@ -260,7 +293,11 @@
             }
 
             const tfjsRes = report.results.tfjs;
-            return `Benchmark completed successfully.\nTFJS Init: ${tfjsRes.initTimeMs} ms\nTFJS Mean Latency: ${tfjsRes.overallMetrics.meanLatencyMs} ms\nTFJS P95 Latency: ${tfjsRes.overallMetrics.p95LatencyMs} ms\nTFJS Tensors Leaked: ${tfjsRes.overallMetrics.tensorsLeaked}`;
+            if (!tfjsRes.initSuccess) {
+                throw new Error(`TFJS adapter failed initialization: ${tfjsRes.error || 'Unknown error'}`);
+            }
+
+            return `Benchmark completed successfully.\nTFJS Status: ${tfjsRes.status}\nTFJS Init: ${tfjsRes.initTimeMs} ms\nTFJS Mean Latency: ${tfjsRes.overallMetrics.meanLatencyMs} ms\nTFJS P95 Latency: ${tfjsRes.overallMetrics.p95LatencyMs} ms\nTFJS Residual Tensors: ${tfjsRes.overallMetrics.tensorsLeaked}`;
         });
 
         window.addEventListener('DOMContentLoaded', runSuite);
