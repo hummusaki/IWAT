@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IWAT - Phase 1 Automated Browser Verification</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 24px;
+            margin: 0;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 24px;
+        }
+
+        .test-card {
+            background: #252526;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .test-status {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .status-running {
+            background: #feca57;
+            color: #000;
+        }
+
+        .status-pass {
+            background: #2ed573;
+            color: #000;
+        }
+
+        .status-fail {
+            background: #ff4757;
+            color: #fff;
+        }
+
+        .test-details {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #9cdcfe;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+
+        .summary-card {
+            margin-top: 24px;
+            padding: 16px;
+            border-radius: 6px;
+            background: #2d2d30;
+            font-weight: bold;
+        }
+    </style>
+
+    <!-- Pinned Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"></script>
+</head>
+
+<body>
+    <h1>IWAT Phase 1 Browser Verification Suite</h1>
+    <div class="subtitle">Verifying Gate 1 requirements: dependencies, tensor lifecycle, corruption recovery, aspect ratio, and face adapter benchmark</div>
+
+    <div id="test-results"></div>
+    <div id="suite-summary" class="summary-card" style="display:none;"></div>
+
+    <script type="module">
+        import { validateCalibrationData, checkExistingCalibration } from '../js/calibration.js';
+        import { predictGaze, setGazeModel, disposeGazeModel } from '../js/regression_model.js';
+        import { computeEyeAspectRatio, BlinkDetector } from '../js/features/blink.js';
+        import { computeProcessingCanvasDimensions, getRelativePupilPos, buildGazeFeatureVector } from '../js/features/geometry.js';
+        import { QualityGate } from '../js/features/quality.js';
+        import { AdapterBenchmarkRunner, createSyntheticTestFrame } from '../js/tracking/adapter-benchmark.js';
+
+        const container = document.getElementById('test-results');
+        const tests = [];
+
+        function registerTest(name, fn) {
+            tests.push({ name, fn });
+        }
+
+        async function runSuite() {
+            let passed = 0;
+            let failed = 0;
+
+            for (const t of tests) {
+                const card = document.createElement('div');
+                card.className = 'test-card';
+                card.innerHTML = `
+                    <div class="test-header">
+                        <span>${t.name}</span>
+                        <span class="test-status status-running">RUNNING</span>
+                    </div>
+                    <div class="test-details">Executing...</div>
+                `;
+                container.appendChild(card);
+
+                const statusEl = card.querySelector('.test-status');
+                const detailsEl = card.querySelector('.test-details');
+
+                try {
+                    const result = await t.fn();
+                    statusEl.className = 'test-status status-pass';
+                    statusEl.textContent = 'PASS';
+                    detailsEl.textContent = result || 'Assertion passed successfully.';
+                    passed++;
+                } catch (err) {
+                    statusEl.className = 'test-status status-fail';
+                    statusEl.textContent = 'FAIL';
+                    detailsEl.textContent = `${err.message}\n${err.stack || ''}`;
+                    failed++;
+                }
+            }
+
+            const summaryEl = document.getElementById('suite-summary');
+            summaryEl.style.display = 'block';
+            summaryEl.innerHTML = `Tests Completed: ${passed + failed} | Passed: <span style="color:#2ed573">${passed}</span> | Failed: <span style="color:#ff4757">${failed}</span>`;
+        }
+
+        // Test 1: Pinned Dependencies Check
+        registerTest('1. Pinned Dependency Integrity', async () => {
+            if (typeof tf === 'undefined') throw new Error('tf is not loaded');
+            if (tf.version.tfjs !== '4.22.0') throw new Error(`Expected tfjs 4.22.0, got ${tf.version.tfjs}`);
+            if (typeof faceLandmarksDetection === 'undefined') throw new Error('faceLandmarksDetection is not loaded');
+            return `TFJS version: ${tf.version.tfjs} (pinned)\nFaceLandmarksDetection: loaded (pinned)\nTasksVision: ${typeof TasksVision !== 'undefined' || typeof tasksVision !== 'undefined' ? 'loaded' : 'available via CDN'}`;
+        });
+
+        // Test 2: Tensor Leakage & tf.tidy() Verification (Zero Monotonic Tensor Growth)
+        registerTest('2. Tensor Leak Prevention (100 Iterations)', async () => {
+            // Create a dummy model
+            const model = tf.sequential();
+            model.add(tf.layers.dense({ inputShape: [4], units: 2, activation: 'linear' }));
+            model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
+            setGazeModel(model);
+
+            // Baseline tensor count
+            const initialTensors = tf.memory().numTensors;
+
+            // Run 100 predictions
+            for (let i = 0; i < 100; i++) {
+                const pred = predictGaze([0.1, 0.2, 0.3, 0.4]);
+                if (!pred || pred.length !== 2) throw new Error('Prediction returned invalid output');
+            }
+
+            const finalTensors = tf.memory().numTensors;
+            disposeGazeModel();
+
+            if (finalTensors !== initialTensors) {
+                throw new Error(`Tensor leak detected! Initial: ${initialTensors}, Final: ${finalTensors}, Leaked: ${finalTensors - initialTensors}`);
+            }
+
+            return `Initial active tensors: ${initialTensors}\nFinal active tensors after 100 predictions: ${finalTensors}\nNet leaked tensors: 0 (PASSED)`;
+        });
+
+        // Test 3: Storage Corruption Self-Healing
+        registerTest('3. Calibration Storage Corruption Recovery', async () => {
+            const key = 'IWAT_calibration_v4';
+
+            // 1. Corrupt JSON string
+            localStorage.setItem(key, '{ invalid json syntax ...');
+            const res1 = checkExistingCalibration();
+            if (res1 !== null) throw new Error('Expected checkExistingCalibration to return null on invalid JSON');
+            if (localStorage.getItem(key) !== null) throw new Error('Expected corrupt key to be purged from localStorage');
+
+            // 2. Corrupt schema with NaN
+            const corruptSchema = {
+                version: 4,
+                x_train: [[0.1, NaN, 0.3, 0.4], [0.1, 0.2, 0.3, 0.4]],
+                y_train: [[0.5, 0.5], [0.5, 0.5]]
+            };
+            localStorage.setItem(key, JSON.stringify(corruptSchema));
+            const res2 = checkExistingCalibration();
+            if (res2 !== null) throw new Error('Expected checkExistingCalibration to return null on NaN coordinates');
+            if (localStorage.getItem(key) !== null) throw new Error('Expected corrupt schema to be purged from localStorage');
+
+            return 'Corrupted JSON string purged cleanly.\nSchema with non-finite NaN coordinates purged cleanly.\nZero crashes or unhandled exceptions.';
+        });
+
+        // Test 4: Aspect Ratio Preservation
+        registerTest('4. Aspect Ratio Preservation & Scaling', async () => {
+            const dims16_9 = computeProcessingCanvasDimensions(1920, 1080, 640);
+            if (dims16_9.width !== 640 || dims16_9.height !== 360) {
+                throw new Error(`Expected 640x360 for 16:9, got ${dims16_9.width}x${dims16_9.height}`);
+            }
+
+            const dims4_3 = computeProcessingCanvasDimensions(640, 480, 640);
+            if (dims4_3.width !== 640 || dims4_3.height !== 480) {
+                throw new Error(`Expected 640x480 for 4:3, got ${dims4_3.width}x${dims4_3.height}`);
+            }
+
+            return `1080p (16:9) scaled to: ${dims16_9.width}x${dims16_9.height} (preserved ratio: ${(dims16_9.width/dims16_9.height).toFixed(2)})\nVGA (4:3) scaled to: ${dims4_3.width}x${dims4_3.height} (preserved ratio: ${(dims4_3.width/dims4_3.height).toFixed(2)})`;
+        });
+
+        // Test 5: Bilateral EAR & Blink State Machine
+        registerTest('5. Bilateral EAR & Temporal Blink State Machine', async () => {
+            const detector = new BlinkDetector();
+            const makeKeypoints = (ear) => ({
+                top: { x: 25, y: 0 },
+                bottom: { x: 25, y: 50 * ear },
+                inner: { x: 0, y: 25 },
+                outer: { x: 50, y: 25 }
+            });
+
+            let t = 1000;
+            let r1 = detector.update(makeKeypoints(0.3), makeKeypoints(0.3), t);
+            if (r1.isBlinking) throw new Error('Expected not blinking at EAR 0.3');
+
+            t += 40;
+            let r2 = detector.update(makeKeypoints(0.12), makeKeypoints(0.12), t);
+            if (!r2.isBlinking) throw new Error('Expected blinking at EAR 0.12');
+
+            t += 60;
+            let r3 = detector.update(makeKeypoints(0.28), makeKeypoints(0.28), t);
+            if (r3.isBlinking) throw new Error('Expected blink recovery at EAR 0.28');
+            if (r3.totalBlinks !== 1) throw new Error(`Expected 1 total blink, got ${r3.totalBlinks}`);
+
+            return `Blink detected accurately with bilateral EAR.\nMeasured duration: ${r3.lastBlinkDuration} ms\nTotal registered blinks: ${r3.totalBlinks}`;
+        });
+
+        // Test 6: Face Adapter Benchmark Runner (Synthetic Scenarios)
+        registerTest('6. Face Adapter Benchmark Execution', async () => {
+            const runner = new AdapterBenchmarkRunner();
+            const report = await runner.runBenchmark({
+                iterationsPerScenario: 3
+            });
+
+            if (!report.results || !report.results.tfjs) {
+                throw new Error('Benchmark report missing TFJS adapter results');
+            }
+
+            const tfjsRes = report.results.tfjs;
+            return `Benchmark completed successfully.\nTFJS Init: ${tfjsRes.initTimeMs} ms\nTFJS Mean Latency: ${tfjsRes.overallMetrics.meanLatencyMs} ms\nTFJS P95 Latency: ${tfjsRes.overallMetrics.p95LatencyMs} ms\nTFJS Tensors Leaked: ${tfjsRes.overallMetrics.tensorsLeaked}`;
+        });
+
+        window.addEventListener('DOMContentLoaded', runSuite);
+    </script>
+</body>
+
+</html>
