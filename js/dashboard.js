@@ -2,14 +2,17 @@
 import { createTaskManager, TASK_DEFINITIONS } from './dashboard-task.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-    // parse url parameters to detect explicitly selected research fixture
+    // parse url parameters to detect explicitly selected research fixture and adaptation mode
     const urlParams = new URLSearchParams(window.location.search);
     const fixtureParam = urlParams.get('fixture') || urlParams.get('presentation');
     const initialPresentation = fixtureParam === 'difficult' ? 'difficult' : 'accessible';
+    const modeParam = urlParams.get('mode');
+    const initialMode = modeParam === 'focused' ? 'focused' : 'standard';
 
     // initialize task manager instance
     const taskManager = createTaskManager({
         presentation: initialPresentation,
+        mode: initialMode,
         activeTaskId: 'task-server-triage'
     });
 
@@ -18,6 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
     window.dashboardTaskState = {
         getState: () => taskManager.getState(),
         getEvents: () => taskManager.getEventRecords(),
+        getMode: () => taskManager.getMode(),
+        setMode: (mode, reason = 'manual') => {
+            const changed = taskManager.setMode(mode, reason);
+            if (changed) {
+                applyMode(taskManager.getMode(), reason);
+            }
+            return changed;
+        },
         reset: () => taskManager.resetTask()
     };
 
@@ -25,14 +36,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const elements = {
         body: document.body,
         taskSelect: document.getElementById('task-select'),
+        modeSelect: document.getElementById('mode-select'),
         presentationSelect: document.getElementById('presentation-select'),
         taskStatusBadge: document.getElementById('task-status-badge'),
         taskObjectiveText: document.getElementById('task-objective-text'),
         taskInstructionsText: document.getElementById('task-instructions-text'),
+        stepGuidanceContainer: document.getElementById('task-step-guidance'),
+        stepList: document.getElementById('task-step-list'),
         taskHintBox: document.getElementById('task-hint-box'),
         taskHintText: document.getElementById('task-hint-text'),
         taskHelpBtn: document.getElementById('task-help-btn'),
         taskResetBtn: document.getElementById('task-reset-btn'),
+        // panels and progressive disclosure
+        serverMatrixPanel: document.getElementById('server-matrix-panel'),
+        serverMatrixToggleBtn: document.getElementById('server-matrix-toggle-btn'),
+        serverMatrixContent: document.getElementById('server-matrix-content'),
+        configPanel: document.getElementById('config-panel'),
+        configToggleBtn: document.getElementById('config-toggle-btn'),
+        configContent: document.getElementById('config-content'),
+        sidebarSecondaryDisclosure: document.getElementById('sidebar-secondary-disclosure'),
         // metrics
         metricTime: document.getElementById('metric-time'),
         metricErrors: document.getElementById('metric-errors'),
@@ -57,6 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
         blinkingAlert: document.querySelector('.blinking-alert'),
         topBarHelp: document.getElementById('top-bar-help')
     };
+
+    let secondaryManuallyExpanded = false;
 
     let feedbackTimeout = null;
     let timerInterval = null;
@@ -117,6 +141,198 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /** jsdoc
+     * checks whether a DOM element is currently visible in layout
+     * @param {Element} el
+     * @returns {boolean}
+     */
+    function isElementVisible(el) {
+        if (!el || el === document.body || !el.isConnected) return false;
+        let cur = el;
+        while (cur && cur !== document.body) {
+            if (cur.style && cur.style.display === 'none') return false;
+            if (window.getComputedStyle) {
+                const style = window.getComputedStyle(cur);
+                if (style && (style.display === 'none' || style.visibility === 'hidden')) {
+                    return false;
+                }
+            }
+            if (cur.tagName === 'DETAILS' && !cur.open && cur !== el) return false;
+            cur = cur.parentElement;
+        }
+        return true;
+    }
+
+    /**
+     * updates DOM panels and progressive disclosure according to mode and active task
+     */
+    function renderModePanels() {
+        const mode = taskManager.getMode();
+        const active = taskManager.getActiveTask();
+        const isServerTask = !active || active.definition.id === 'task-server-triage';
+
+        if (mode === 'focused') {
+            elements.body.classList.add('mode-focused');
+            elements.body.classList.remove('mode-standard');
+            if (elements.sidebarSecondaryDisclosure) {
+                elements.sidebarSecondaryDisclosure.open = false;
+            }
+
+            // primary vs secondary panels
+            const primaryPanel = isServerTask ? elements.serverMatrixPanel : elements.configPanel;
+            const secondaryPanel = isServerTask ? elements.configPanel : elements.serverMatrixPanel;
+            const primaryToggle = isServerTask ? elements.serverMatrixToggleBtn : elements.configToggleBtn;
+            const secondaryToggle = isServerTask ? elements.configToggleBtn : elements.serverMatrixToggleBtn;
+            const primaryContent = isServerTask ? elements.serverMatrixContent : elements.configContent;
+            const secondaryContent = isServerTask ? elements.configContent : elements.serverMatrixContent;
+
+            if (primaryPanel) {
+                primaryPanel.classList.add('is-primary-task');
+                primaryPanel.classList.remove('is-secondary-task');
+                const tag = primaryPanel.querySelector('.task-focus-tag');
+                if (tag) tag.style.display = 'inline-block';
+            }
+            if (primaryToggle) {
+                primaryToggle.style.display = 'none';
+            }
+            if (primaryContent) {
+                primaryContent.style.display = 'block';
+            }
+
+            if (secondaryPanel) {
+                secondaryPanel.classList.add('is-secondary-task');
+                secondaryPanel.classList.remove('is-primary-task');
+                const tag = secondaryPanel.querySelector('.task-focus-tag');
+                if (tag) tag.style.display = 'none';
+            }
+            if (secondaryToggle) {
+                secondaryToggle.style.display = 'inline-flex';
+                secondaryToggle.setAttribute('aria-expanded', String(secondaryManuallyExpanded));
+                const label = secondaryToggle.querySelector('.toggle-btn-text');
+                if (label) {
+                    label.textContent = secondaryManuallyExpanded
+                        ? 'Hide Secondary Details'
+                        : (isServerTask ? 'Show Configuration Overrides (Secondary)' : 'Show Server Matrix (Secondary)');
+                }
+            }
+            if (secondaryContent) {
+                secondaryContent.style.display = secondaryManuallyExpanded ? 'block' : 'none';
+            }
+            if (secondaryPanel) {
+                secondaryPanel.classList.toggle('is-expanded', secondaryManuallyExpanded);
+            }
+        } else {
+            // standard mode
+            elements.body.classList.remove('mode-focused');
+            elements.body.classList.add('mode-standard');
+            if (elements.sidebarSecondaryDisclosure) {
+                elements.sidebarSecondaryDisclosure.open = true;
+            }
+
+            [elements.serverMatrixPanel, elements.configPanel].forEach(panel => {
+                if (panel) {
+                    panel.classList.remove('is-primary-task', 'is-secondary-task', 'is-expanded');
+                    const tag = panel.querySelector('.task-focus-tag');
+                    if (tag) tag.style.display = 'none';
+                }
+            });
+
+            [elements.serverMatrixToggleBtn, elements.configToggleBtn].forEach(btn => {
+                if (btn) btn.style.display = 'none';
+            });
+
+            [elements.serverMatrixContent, elements.configContent].forEach(content => {
+                if (content) content.style.display = 'block';
+            });
+        }
+    }
+
+    /** jsdoc
+     * renders live task step guidance in focused mode
+     */
+    function renderStepGuidance() {
+        if (!elements.stepList || !elements.stepGuidanceContainer) return;
+        const mode = taskManager.getMode();
+
+        if (mode !== 'focused') {
+            elements.stepGuidanceContainer.style.display = 'none';
+            return;
+        }
+
+        elements.stepGuidanceContainer.style.display = 'block';
+        const steps = taskManager.getTaskStepsProgress();
+
+        elements.stepList.innerHTML = '';
+        steps.forEach((step, index) => {
+            const li = document.createElement('li');
+            li.className = 'step-item';
+            if (step.isComplete) {
+                li.classList.add('step-complete');
+            } else if (step.isCurrent) {
+                li.classList.add('step-current');
+                li.setAttribute('aria-current', 'step');
+            } else {
+                li.classList.add('step-pending');
+            }
+
+            const titleEl = document.createElement('strong');
+            titleEl.textContent = `${index + 1}. ${step.title}: `;
+            li.appendChild(titleEl);
+
+            const descEl = document.createElement('span');
+            descEl.textContent = step.description;
+            li.appendChild(descEl);
+
+            const badgeEl = document.createElement('span');
+            badgeEl.className = 'step-tag';
+            if (step.isComplete) {
+                badgeEl.classList.add('step-tag-complete');
+                badgeEl.textContent = '✓ Completed';
+            } else if (step.isCurrent) {
+                badgeEl.classList.add('step-tag-current');
+                badgeEl.textContent = 'Current Step';
+            } else {
+                badgeEl.classList.add('step-tag-pending');
+                badgeEl.textContent = 'Pending';
+            }
+            li.appendChild(badgeEl);
+
+            elements.stepList.appendChild(li);
+        });
+    }
+
+    /** jsdoc
+     * updates dashboard adaptation mode ('standard' | 'focused')
+     * @param {'standard'|'focused'} mode
+     * @param {string} [reason]
+     */
+    function applyMode(mode, reason = 'manual') {
+        const activeBefore = document.activeElement;
+
+        // update selector if out of sync
+        if (elements.modeSelect && elements.modeSelect.value !== mode) {
+            elements.modeSelect.value = mode;
+        }
+
+        renderModePanels();
+        renderStepGuidance();
+
+        // predictable keyboard focus handling: if active element was hidden, shift focus
+        if (activeBefore && activeBefore !== document.body && !isElementVisible(activeBefore)) {
+            const active = taskManager.getActiveTask();
+            const isServerTask = !active || active.definition.id === 'task-server-triage';
+            const secondaryToggle = isServerTask ? elements.configToggleBtn : elements.serverMatrixToggleBtn;
+
+            if (secondaryToggle && isElementVisible(secondaryToggle)) {
+                secondaryToggle.focus();
+            } else if (elements.modeSelect && isElementVisible(elements.modeSelect)) {
+                elements.modeSelect.focus();
+            } else if (elements.taskSelect && isElementVisible(elements.taskSelect)) {
+                elements.taskSelect.focus();
+            }
+        }
+    }
+
     /**
      * synchronizes task guidance display and instructions with active task
      */
@@ -151,6 +367,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateMetricsDisplay(state);
+
+        if (taskManager.getMode() === 'focused') {
+            renderModePanels();
+            renderStepGuidance();
+        }
     }
 
     /** jsdoc
@@ -229,11 +450,50 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // event listener: mode selector
+    if (elements.modeSelect) {
+        elements.modeSelect.addEventListener('change', (e) => {
+            const nextMode = e.target.value;
+            const changed = taskManager.setMode(nextMode, 'mode_selector');
+            if (changed) {
+                applyMode(nextMode, 'mode_selector');
+                showFeedback(
+                    nextMode === 'focused'
+                        ? 'Focused mode activated: Active task highlighted, secondary details progressively disclosed.'
+                        : 'Standard mode restored: All panels and operations visible.',
+                    'info'
+                );
+            }
+        });
+    }
+
+    // event listener: secondary panel toggle buttons
+    function setupSecondaryToggle(btn, content, panel, isServer) {
+        if (!btn || !content) return;
+        btn.addEventListener('click', () => {
+            secondaryManuallyExpanded = !secondaryManuallyExpanded;
+            content.style.display = secondaryManuallyExpanded ? 'block' : 'none';
+            btn.setAttribute('aria-expanded', String(secondaryManuallyExpanded));
+            const label = btn.querySelector('.toggle-btn-text');
+            if (label) {
+                label.textContent = secondaryManuallyExpanded
+                    ? 'Hide Secondary Details'
+                    : (isServer ? 'Show Server Matrix (Secondary)' : 'Show Configuration Overrides (Secondary)');
+            }
+            if (panel) {
+                panel.classList.toggle('is-expanded', secondaryManuallyExpanded);
+            }
+        });
+    }
+    setupSecondaryToggle(elements.serverMatrixToggleBtn, elements.serverMatrixContent, elements.serverMatrixPanel, true);
+    setupSecondaryToggle(elements.configToggleBtn, elements.configContent, elements.configPanel, false);
+
     // event listener: task selector
     if (elements.taskSelect) {
         elements.taskSelect.addEventListener('change', (e) => {
             const selectedTaskId = e.target.value;
             taskManager.setActiveTask(selectedTaskId);
+            secondaryManuallyExpanded = false;
             if (elements.taskHintBox) {
                 elements.taskHintBox.style.display = 'none';
             }
@@ -242,6 +502,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 elements.taskHelpBtn.textContent = 'Show Help & Hint';
             }
             renderTaskGuidance();
+            if (taskManager.getMode() === 'focused') {
+                renderModePanels();
+                renderStepGuidance();
+            }
             showFeedback(`Task changed to: ${TASK_DEFINITIONS[selectedTaskId].title}`, 'info');
         });
     }
@@ -476,13 +740,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // initialize presentation & task display
+    // initialize presentation, mode & task display
     applyPresentation(taskManager.getPresentation());
+    applyMode(taskManager.getMode(), 'initial_load');
     syncFormFromState();
     renderTaskGuidance();
 
-    // subscribe to task manager events to refresh UI metrics
+    // subscribe to task manager events to refresh UI metrics and step guidance
     taskManager.subscribe(() => {
         renderTaskGuidance();
+        if (taskManager.getMode() === 'focused') {
+            renderStepGuidance();
+        }
     });
 });
