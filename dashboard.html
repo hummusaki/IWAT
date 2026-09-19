@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IWAT - Accessibility Testing</title>
+    <title>IWAT - Accessible Server Dashboard</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 
@@ -12,141 +12,255 @@
 
     <div class="dashboard-container">
 
-        <!-- Nonsensical Sidebar -->
-        <div class="sidebar">
+        <!-- sidebar navigation -->
+        <nav class="sidebar" aria-label="Dashboard Navigation">
             <div class="nav-group">
-                <a href="#" class="nav-item">Analytics Hub (v2)</a>
-                <a href="#" class="nav-item">Data Processing Configs</a>
-                <a href="#" class="nav-item">Legacy Data (Deprecated)</a>
-                <a href="#" class="nav-item">User Telemetry</a>
+                <span class="nav-group-title">Analytics & Ops</span>
+                <a href="#analytics" class="nav-item active">Analytics Hub (v2)</a>
+                <a href="#configs" class="nav-item">Data Processing Configs</a>
+                <a href="#telemetry" class="nav-item">User Telemetry</a>
             </div>
             <div class="nav-group">
-                <a href="#" class="nav-item">Cloud Integration Setup</a>
-                <a href="#" class="nav-item">Auth Providers</a>
-                <a href="#" class="nav-item">Billing & Metrics</a>
+                <span class="nav-group-title">Infrastructure</span>
+                <a href="#cloud" class="nav-item">Cloud Integration Setup</a>
+                <a href="#auth" class="nav-item">Auth Providers</a>
+                <a href="#billing" class="nav-item">Billing & Metrics</a>
             </div>
             <div class="nav-group">
-                <a href="#" class="nav-item">Settings</a>
-                <a href="#" class="nav-item">Advanced Preferences</a>
-                <a href="#" class="nav-item">Developer Console</a>
+                <span class="nav-group-title">Preferences</span>
+                <a href="#settings" class="nav-item">Settings</a>
+                <a href="#preferences" class="nav-item">Advanced Preferences</a>
+                <a href="#console" class="nav-item">Developer Console</a>
             </div>
-            <div class="blinking-alert">System Warning: Node 84 offline.</div>
-        </div>
 
-        <!-- Main Content -->
-        <div class="main-content">
-            <div class="top-bar">
-                <span>Account ID: 89432-XYZ</span>
-                <span>Region: us-east-1</span>
-                <span>Help</span>
-                <span>Logout</span>
+            <!-- warning indicator in sidebar -->
+            <div class="sidebar-status-banner" role="status">
+                Notice: Node 84 scheduled maintenance.
             </div>
+            <div class="blinking-alert" style="display: none;" role="status">
+                System Warning: Node 84 offline.
+            </div>
+        </nav>
+
+        <!-- main content area -->
+        <main class="main-content" id="main-content">
+            <!-- top bar -->
+            <header class="top-bar">
+                <div class="top-bar-meta">
+                    <span><strong>Account:</strong> 89432-XYZ</span>
+                    <span><strong>Region:</strong> us-east-1</span>
+                </div>
+                <div class="top-bar-actions">
+                    <a href="#help" id="top-bar-help" class="top-bar-link">Documentation & Help</a>
+                    <a href="#logout" class="top-bar-link">Sign Out</a>
+                </div>
+            </header>
 
             <div class="content-body">
-                <h3>Global Server Utilization Matrix</h3>
 
-                <!-- Dense Data Table with Color-only indicators -->
-                <table class="dense-table">
-                    <thead>
-                        <tr>
-                            <th>Instance ID</th>
-                            <th>Status</th>
-                            <th>CPU %</th>
-                            <th>RAM %</th>
-                            <th>Network I/O</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>srv-cluster-a-01</td>
-                            <td><span class="status-indicator status-good"></span></td>
-                            <td>12.4%</td>
-                            <td>45.1%</td>
-                            <td>1.2 GB/s</td>
-                            <td class="action-buttons">
-                                <button class="btn btn-primary"></button>
-                                <button class="btn btn-danger"></button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>srv-cluster-a-02</td>
-                            <td><span class="status-indicator status-bad"></span></td>
-                            <td>99.9%</td>
-                            <td>98.2%</td>
-                            <td>0.1 GB/s</td>
-                            <td class="action-buttons">
-                                <button class="btn btn-primary"></button>
-                                <button class="btn btn-danger"></button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>srv-cluster-a-03</td>
-                            <td><span class="status-indicator status-good"></span></td>
-                            <td>45.0%</td>
-                            <td>60.0%</td>
-                            <td>2.4 GB/s</td>
-                            <td class="action-buttons">
-                                <button class="btn btn-primary"></button>
-                                <button class="btn btn-danger"></button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>db-node-primary</td>
-                            <td><span class="status-indicator status-good"></span></td>
-                            <td>88.1%</td>
-                            <td>72.5%</td>
-                            <td>5.5 GB/s</td>
-                            <td class="action-buttons">
-                                <button class="btn btn-primary"></button>
-                                <button class="btn btn-danger"></button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <br>
-                <h3>Configuration Overrides</h3>
-                <!-- Cluttered Form Panel -->
-                <div class="settings-panel">
-                    <div class="form-group">
-                        <label>Max Thread Count</label>
-                        <input type="text" value="1024">
-                    </div>
-                    <div class="form-group">
-                        <label>Memory Limit (MB)</label>
-                        <input type="text" value="8192">
-                    </div>
-                    <div class="form-group">
-                        <label>Fallback Strategy</label>
-                        <select>
-                            <option>Route to failover</option>
-                            <option>Drop packets</option>
-                            <option>Queue (unbounded)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Aggressive Caching</label>
-                        <input type="checkbox">
+                <!-- task guidance & evaluation header -->
+                <section class="task-guidance-panel" aria-label="Task Guidance and Evaluation Controls">
+                    <div class="task-panel-header">
+                        <div class="task-controls">
+                            <label for="task-select" class="task-control-label">Active Task:</label>
+                            <select id="task-select" class="task-select-input" aria-label="Select evaluation task">
+                                <option value="task-server-triage">Task 1: Triage Overloaded Server</option>
+                                <option value="task-config-update">Task 2: Update Configuration Override</option>
+                            </select>
+                            <span id="task-status-badge" class="task-badge badge-idle" aria-live="polite">Status: Idle</span>
+                        </div>
+                        <div class="research-controls">
+                            <label for="presentation-select" class="task-control-label">Presentation:</label>
+                            <select id="presentation-select" class="presentation-select-input" aria-label="Select presentation fixture">
+                                <option value="accessible">Accessible Dashboard (Default)</option>
+                                <option value="difficult">Difficult Research Fixture</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <div style="margin-top: 10px;">
-                        <button class="btn btn-primary" style="margin-right: 5px;">Save</button>
-                        <button class="btn btn-danger">Revert</button>
+                    <div class="task-instructions-box">
+                        <div class="task-objective">
+                            <strong>Objective:</strong> <span id="task-objective-text">Loading task...</span>
+                        </div>
+                        <div class="task-instructions">
+                            <strong>Instructions:</strong> <span id="task-instructions-text">Loading instructions...</span>
+                        </div>
+                        <div id="task-hint-box" class="task-hint-box" style="display: none;" role="region" aria-label="Task Hint">
+                            <strong>Hint:</strong> <span id="task-hint-text"></span>
+                        </div>
+                        <div class="task-action-row">
+                            <button type="button" id="task-help-btn" class="btn btn-outline" aria-expanded="false">Show Help & Hint</button>
+                            <button type="button" id="task-reset-btn" class="btn btn-outline">Reset Task</button>
+                        </div>
                     </div>
+
+                    <!-- live telemetry / task metrics summary -->
+                    <div class="task-metrics-summary" aria-label="Task Performance Telemetry">
+                        <div class="metric-item">
+                            <span class="metric-label">Elapsed:</span>
+                            <span id="metric-time" class="metric-value">--</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Incorrect Choices:</span>
+                            <span id="metric-errors" class="metric-value">0</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Corrections:</span>
+                            <span id="metric-corrections" class="metric-value">0</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Help Requested:</span>
+                            <span id="metric-help" class="metric-value">0</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Events Logged:</span>
+                            <span id="metric-events" class="metric-value">0</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- inline feedback banner (replaces blocking alerts) -->
+                <div id="inline-feedback" class="inline-feedback feedback-idle" role="status" aria-live="polite" aria-atomic="true">
+                    <div class="feedback-content">
+                        <span id="feedback-icon" class="feedback-icon" aria-hidden="true">ℹ️</span>
+                        <span id="feedback-message" class="feedback-message">Dashboard ready. Select a task or perform actions to begin.</span>
+                    </div>
+                    <button type="button" id="feedback-dismiss-btn" class="feedback-dismiss" aria-label="Dismiss feedback message">&times;</button>
                 </div>
 
-                <div style="font-size: 8px; color: #d0d0d0; margin-top: 20px;">
-                    Confidential. Do not distribute. All configurations are subject to automated overwrite by the
-                    central policy daemon.
-                    If you experience errors, consult manual section 4.B paragraph 12.
-                </div>
+                <!-- global server utilization matrix -->
+                <section class="panel-card" aria-labelledby="server-matrix-heading">
+                    <h3 id="server-matrix-heading">Global Server Utilization Matrix</h3>
+
+                    <div class="table-responsive">
+                        <table class="dense-table" aria-describedby="server-matrix-heading">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Instance ID</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">CPU %</th>
+                                    <th scope="col">RAM %</th>
+                                    <th scope="col">Network I/O</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-instance="srv-cluster-a-01">
+                                    <td><strong>srv-cluster-a-01</strong></td>
+                                    <td>
+                                        <span class="status-badge status-healthy" aria-label="Status: Healthy">
+                                            <span class="status-dot" aria-hidden="true"></span>
+                                            <span class="status-text">Healthy</span>
+                                        </span>
+                                    </td>
+                                    <td>12.4%</td>
+                                    <td>45.1%</td>
+                                    <td>1.2 GB/s</td>
+                                    <td class="action-buttons">
+                                        <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-01" aria-label="Restart srv-cluster-a-01"><span class="btn-text">Restart</span></button>
+                                        <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-01" aria-label="Isolate srv-cluster-a-01"><span class="btn-text">Isolate</span></button>
+                                    </td>
+                                </tr>
+                                <tr data-instance="srv-cluster-a-02">
+                                    <td><strong>srv-cluster-a-02</strong></td>
+                                    <td>
+                                        <span class="status-badge status-critical" aria-label="Status: Critical Overloaded">
+                                            <span class="status-dot" aria-hidden="true"></span>
+                                            <span class="status-text">Critical (Overloaded)</span>
+                                        </span>
+                                    </td>
+                                    <td><strong>99.9%</strong></td>
+                                    <td><strong>98.2%</strong></td>
+                                    <td>0.1 GB/s</td>
+                                    <td class="action-buttons">
+                                        <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-02" aria-label="Restart srv-cluster-a-02"><span class="btn-text">Restart</span></button>
+                                        <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-02" aria-label="Isolate srv-cluster-a-02"><span class="btn-text">Isolate</span></button>
+                                    </td>
+                                </tr>
+                                <tr data-instance="srv-cluster-a-03">
+                                    <td><strong>srv-cluster-a-03</strong></td>
+                                    <td>
+                                        <span class="status-badge status-healthy" aria-label="Status: Healthy">
+                                            <span class="status-dot" aria-hidden="true"></span>
+                                            <span class="status-text">Healthy</span>
+                                        </span>
+                                    </td>
+                                    <td>45.0%</td>
+                                    <td>60.0%</td>
+                                    <td>2.4 GB/s</td>
+                                    <td class="action-buttons">
+                                        <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-03" aria-label="Restart srv-cluster-a-03"><span class="btn-text">Restart</span></button>
+                                        <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-03" aria-label="Isolate srv-cluster-a-03"><span class="btn-text">Isolate</span></button>
+                                    </td>
+                                </tr>
+                                <tr data-instance="db-node-primary">
+                                    <td><strong>db-node-primary</strong></td>
+                                    <td>
+                                        <span class="status-badge status-healthy" aria-label="Status: Healthy">
+                                            <span class="status-dot" aria-hidden="true"></span>
+                                            <span class="status-text">Healthy</span>
+                                        </span>
+                                    </td>
+                                    <td>88.1%</td>
+                                    <td>72.5%</td>
+                                    <td>5.5 GB/s</td>
+                                    <td class="action-buttons">
+                                        <button type="button" class="btn btn-primary" data-action="restart" data-instance="db-node-primary" aria-label="Restart db-node-primary"><span class="btn-text">Restart</span></button>
+                                        <button type="button" class="btn btn-danger" data-action="isolate" data-instance="db-node-primary" aria-label="Isolate db-node-primary"><span class="btn-text">Isolate</span></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- configuration overrides form panel -->
+                <section class="panel-card" aria-labelledby="config-heading">
+                    <h3 id="config-heading">Configuration Overrides</h3>
+
+                    <form id="config-form" class="settings-panel" novalidate>
+                        <div class="form-group">
+                            <label for="cfg-max-threads">Max Thread Count</label>
+                            <input type="number" id="cfg-max-threads" name="maxThreads" value="1024" min="1" max="16384" step="1">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cfg-memory-limit">Memory Limit (MB)</label>
+                            <input type="number" id="cfg-memory-limit" name="memoryLimit" value="8192" min="512" max="65536" step="256">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cfg-fallback-strategy">Fallback Strategy</label>
+                            <select id="cfg-fallback-strategy" name="fallbackStrategy">
+                                <option value="Route to failover">Route to failover</option>
+                                <option value="Drop packets">Drop packets</option>
+                                <option value="Queue (unbounded)">Queue (unbounded)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group form-group-checkbox">
+                            <input type="checkbox" id="cfg-aggressive-caching" name="aggressiveCaching">
+                            <label for="cfg-aggressive-caching">Aggressive Caching</label>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" id="cfg-save-btn" class="btn btn-primary"><span class="btn-text">Save Configuration</span></button>
+                            <button type="button" id="cfg-revert-btn" class="btn btn-secondary"><span class="btn-text">Revert Changes</span></button>
+                        </div>
+                    </form>
+
+                    <div class="footnote-disclaimer">
+                        Confidential. Do not distribute. All configurations are subject to automated overwrite by the central policy daemon.
+                        If you experience errors, consult manual section 4.B paragraph 12.
+                    </div>
+                </section>
+
             </div>
-        </div>
+        </main>
     </div>
 
-    <!-- Load dashboard specific dummy interactivity -->
-    <script src="js/dashboard.js"></script>
+    <!-- load dashboard task manager and interactivity -->
+    <script type="module" src="js/dashboard.js"></script>
 </body>
 
 </html>
