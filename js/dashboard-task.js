@@ -35,7 +35,24 @@ export const TASK_DEFINITIONS = Object.freeze({
         instructions: 'Examine the Global Server Utilization Matrix. Locate the server experiencing critical utilization (srv-cluster-a-02 at 99.9% CPU) and click its Restart action.',
         helpHint: 'Inspect the CPU % and Status indicators. Server srv-cluster-a-02 is critically overloaded. Click the Restart button for srv-cluster-a-02.',
         targetServer: 'srv-cluster-a-02',
-        targetAction: 'restart'
+        targetAction: 'restart',
+        steps: Object.freeze([
+            Object.freeze({
+                id: 'step-locate',
+                title: 'Identify Overloaded Server',
+                description: 'Locate srv-cluster-a-02 exhibiting 99.9% CPU utilization in the matrix.'
+            }),
+            Object.freeze({
+                id: 'step-action',
+                title: 'Initiate Restart',
+                description: 'Click the Restart action button for srv-cluster-a-02.'
+            }),
+            Object.freeze({
+                id: 'step-verify',
+                title: 'Verify Remediation',
+                description: 'Confirm remediation success and check live metrics.'
+            })
+        ])
     }),
     'task-config-update': Object.freeze({
         id: 'task-config-update',
@@ -46,7 +63,24 @@ export const TASK_DEFINITIONS = Object.freeze({
         targetFormValues: Object.freeze({
             memoryLimit: '16384',
             fallbackStrategy: 'Route to failover'
-        })
+        }),
+        steps: Object.freeze([
+            Object.freeze({
+                id: 'step-memory',
+                title: 'Set Memory Limit',
+                description: 'Set Memory Limit (MB) to 16384.'
+            }),
+            Object.freeze({
+                id: 'step-fallback',
+                title: 'Set Fallback Strategy',
+                description: 'Select "Route to failover" from the strategy menu.'
+            }),
+            Object.freeze({
+                id: 'step-save',
+                title: 'Save Configuration',
+                description: 'Click Save Configuration to apply changes.'
+            })
+        ])
     })
 });
 
@@ -58,6 +92,8 @@ export const TASK_DEFINITIONS = Object.freeze({
 export function createTaskManager(initialOptions = {}) {
     // default presentation is accessible unless explicitly specified
     let presentation = initialOptions.presentation === 'difficult' ? 'difficult' : 'accessible';
+    // default mode is standard unless explicitly specified
+    let mode = initialOptions.mode === 'focused' ? 'focused' : 'standard';
     let activeTaskId = initialOptions.activeTaskId || 'task-server-triage';
 
     // draft form values preserved across mode and presentation switches
@@ -341,6 +377,93 @@ export function createTaskManager(initialOptions = {}) {
     }
 
     /** jsdoc
+     * updates adaptation mode ('standard' | 'focused')
+     * @param {string} newMode
+     * @param {string} [reason]
+     * @returns {boolean}
+     */
+    function setMode(newMode, reason = 'manual') {
+        if (newMode !== 'standard' && newMode !== 'focused') {
+            return false;
+        }
+        if (mode === newMode) {
+            return false;
+        }
+        const fromMode = mode;
+        mode = newMode;
+        recordEvent('MODE_CHANGED', activeTaskId, {
+            fromMode,
+            toMode: mode,
+            reason
+        });
+        notify('MODE_CHANGED', { mode, fromMode, reason });
+        return true;
+    }
+
+    /** jsdoc
+     * gets current adaptation mode
+     * @returns {string}
+     */
+    function getMode() {
+        return mode;
+    }
+
+    /** jsdoc
+     * evaluates step progress for specified task
+     * @param {string} [taskId]
+     * @returns {Array<Object>}
+     */
+    function getTaskStepsProgress(taskId = activeTaskId) {
+        const def = TASK_DEFINITIONS[taskId];
+        if (!def || !def.steps) return [];
+        const state = taskStates[taskId];
+
+        return def.steps.map((step, idx) => {
+            let isComplete = false;
+            let isCurrent = false;
+
+            if (taskId === 'task-server-triage') {
+                if (state.status === 'completed') {
+                    isComplete = true;
+                } else if (idx === 0) {
+                    isCurrent = state.status === 'idle';
+                    isComplete = state.status === 'in_progress';
+                } else if (idx === 1) {
+                    isCurrent = state.status === 'in_progress';
+                } else if (idx === 2) {
+                    isCurrent = false;
+                }
+            } else if (taskId === 'task-config-update') {
+                if (state.status === 'completed') {
+                    isComplete = true;
+                } else {
+                    const memOk = String(formData.memoryLimit).trim() === '16384';
+                    const stratOk = formData.fallbackStrategy === 'Route to failover';
+
+                    if (idx === 0) {
+                        isComplete = memOk;
+                        isCurrent = !memOk;
+                    } else if (idx === 1) {
+                        isComplete = stratOk;
+                        isCurrent = memOk && !stratOk;
+                    } else if (idx === 2) {
+                        isComplete = false;
+                        isCurrent = memOk && stratOk;
+                    }
+                }
+            }
+
+            return {
+                id: step.id,
+                title: step.title,
+                description: step.description,
+                isComplete,
+                isCurrent: isComplete ? false : isCurrent
+            };
+        });
+    }
+
+    /** jsdoc
      * updates form draft data to preserve input across mode switches
      * @param {Object} updates
      * @returns {Object}
@@ -380,14 +503,12 @@ export function createTaskManager(initialOptions = {}) {
         return {
             activeTaskId,
             presentation,
+            mode,
             formData: { ...formData },
             taskStates: clonedTaskStates,
             events: [...events]
         };
     }
-
-
-    // CLARIFY:
 
     /** jsdoc
      * restores task manager state from a saved snapshot
@@ -401,6 +522,9 @@ export function createTaskManager(initialOptions = {}) {
 
         if (savedState.presentation) {
             presentation = savedState.presentation === 'difficult' ? 'difficult' : 'accessible';
+        }
+        if (savedState.mode) {
+            mode = savedState.mode === 'focused' ? 'focused' : 'standard';
         }
         if (savedState.activeTaskId && TASK_DEFINITIONS[savedState.activeTaskId]) {
             activeTaskId = savedState.activeTaskId;
@@ -458,6 +582,9 @@ export function createTaskManager(initialOptions = {}) {
         resetTask,
         setPresentation,
         getPresentation,
+        setMode,
+        getMode,
+        getTaskStepsProgress,
         updateFormData,
         getFormData,
         getState,
