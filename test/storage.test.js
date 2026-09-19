@@ -1,4 +1,4 @@
-// storage.test.js - Unit tests for calibration storage validation and corruption recovery
+// storage.test.js - unit tests for calibration storage validation and corruption recovery
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateCalibrationData } from '../js/calibration.js';
@@ -119,7 +119,7 @@ test('validateCalibrationData rejects uncommitted v5 calibration data', () => {
 test('computeFeatureSpread accurately detects presence or absence of two-axis variance', async () => {
     const { computeFeatureSpread } = await import('../js/calibration.js');
 
-    // Data with variance on both axes
+    // data with variance on both axes
     const goodData = [
         [0.10, 0.20, 0.11, 0.21],
         [0.15, 0.25, 0.16, 0.26],
@@ -130,7 +130,7 @@ test('computeFeatureSpread accurately detects presence or absence of two-axis va
     assert.ok(goodSpread.varX > 1e-4);
     assert.ok(goodSpread.varY > 1e-4);
 
-    // Data with ZERO vertical variance (Y values identical)
+    // data with zero vertical variance (y values identical)
     const flatYData = [
         [0.10, 0.20, 0.11, 0.20],
         [0.15, 0.20, 0.16, 0.20],

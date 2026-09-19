@@ -1,4 +1,4 @@
-// camera-recovery.test.js - Unit tests for camera state machine and failure recovery
+// camera-recovery.test.js - unit tests for camera state machine and failure recovery
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CameraState, getCameraState, subscribeCameraState, enableNoCameraMode } from '../js/camera.js';
@@ -65,7 +65,7 @@ test('startCamera resolves when metadata timeout fires but videoWidth is valid',
         }
     };
 
-    // Fast timeout of 50ms to trigger the timeout handler with videoWidth > 0
+    // fast timeout of 50ms to trigger the timeout handler with videoWidth > 0
     const res = await startCamera(mockVideo, { metadataTimeoutMs: 50 });
     assert.equal(res.width, 640);
     assert.equal(res.height, 480);
@@ -159,10 +159,10 @@ test('stopCamera during pending getUserMedia cancels and stops late-acquired tra
 
     const startPromise = startCamera(mockVideo);
 
-    // Cancel while permission is still pending
+    // cancel while permission is still pending
     stopCamera(mockVideo);
 
-    // Now resolve the pending getUserMedia
+    // now resolve the pending getUserMedia
     resolveGetUserMedia();
 
     await assert.rejects(
@@ -211,7 +211,7 @@ test('track.onended event transitions camera state to STOPPED', async () => {
     await startCamera(mockVideo);
     assert.equal(getCameraState(), CameraState.STREAMING);
 
-    // Simulate system disconnecting the camera track
+    // simulate system disconnecting the camera track
     assert.ok(trackEndedHandler != null);
     trackEndedHandler();
 

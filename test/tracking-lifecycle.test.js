@@ -1,4 +1,4 @@
-// tracking-lifecycle.test.js - Unit tests for tracking session lifecycle, draining, sample records, and stall watchdog
+// tracking-lifecycle.test.js - unit tests for tracking session lifecycle, draining, sample records, and stall watchdog
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -31,7 +31,7 @@ test('GazeSample produces immutable sample records with latency and age', () => 
     assert.equal(sample.valid, true);
     assert.deepEqual(sample.features, [0.1, 0.2, 0.3, 0.4]);
 
-    // Immutability checks
+    // immutability checks
     assert.throws(() => { sample.valid = false; });
     assert.throws(() => { sample.features[0] = 999; });
 });

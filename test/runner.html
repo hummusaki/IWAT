@@ -82,7 +82,7 @@
         }
     </style>
 
-    <!-- Pinned Dependencies -->
+    <!-- pinned dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"></script>
@@ -148,7 +148,7 @@
             summaryEl.innerHTML = `Tests Completed: ${passed + failed} | Passed: <span style="color:#2ed573">${passed}</span> | Failed: <span style="color:#ff4757">${failed}</span>`;
         }
 
-        // Test 1: Pinned Dependencies Check
+        // test 1: pinned dependencies check
         registerTest('1. Pinned Dependency Integrity', async () => {
             if (typeof tf === 'undefined') throw new Error('tf is not loaded');
             if (tf.version.tfjs !== '4.22.0') throw new Error(`Expected tfjs 4.22.0, got ${tf.version.tfjs}`);
@@ -156,7 +156,7 @@
             return `TFJS version: ${tf.version.tfjs} (pinned)\nFaceLandmarksDetection: loaded (pinned)\nTasksVision: ${typeof TasksVision !== 'undefined' || typeof tasksVision !== 'undefined' ? 'loaded' : 'available via CDN'}`;
         });
 
-        // Test 2: Tensor Leakage & tf.tidy() Verification (Prediction & Training Lifecycle)
+        // test 2: tensor leakage & tf.tidy() verification (prediction & training lifecycle)
         registerTest('2. Tensor Leak Prevention (100 Iterations & Training Lifecycle)', async () => {
             // 1. Create a dummy model and test 100 predictions inside tf.tidy
             const model = tf.sequential();
@@ -198,7 +198,7 @@
             return `Predictions: 100 iterations executed with zero leaked tensors.\nTraining lifecycle: fit & candidate disposal returned cleanly to baseline.\nNet residual tensors: 0 (PASSED)`;
         });
 
-        // Test 3: Storage Corruption Self-Healing (Isolated from Application Data)
+        // test 3: storage corruption self-healing (isolated from application data)
         registerTest('3. Calibration Storage Corruption Recovery (Isolated Key)', async () => {
             const testKey = 'IWAT_test_isolated_calib';
 
@@ -223,7 +223,7 @@
             return 'Corrupted JSON string purged cleanly.\nSchema with non-finite NaN coordinates purged cleanly.\nTest key isolated; application production calibration preserved.';
         });
 
-        // Test 4: Aspect Ratio Preservation
+        // test 4: aspect ratio preservation
         registerTest('4. Aspect Ratio Preservation & Scaling', async () => {
             const dims16_9 = computeProcessingCanvasDimensions(1920, 1080, 640);
             if (dims16_9.width !== 640 || dims16_9.height !== 360) {
@@ -238,7 +238,7 @@
             return `1080p (16:9) scaled to: ${dims16_9.width}x${dims16_9.height} (preserved ratio: ${(dims16_9.width/dims16_9.height).toFixed(2)})\nVGA (4:3) scaled to: ${dims4_3.width}x${dims4_3.height} (preserved ratio: ${(dims4_3.width/dims4_3.height).toFixed(2)})`;
         });
 
-        // Test 5: Bilateral EAR & Blink State Machine (Temporal Contract)
+        // test 5: bilateral EAR & blink state machine (temporal contract)
         registerTest('5. Bilateral EAR & Temporal Blink State Machine', async () => {
             const detector = new BlinkDetector({ minDurationMs: 50 });
             const makeKeypoints = (ear) => ({
@@ -281,7 +281,7 @@
             return `Blink contract verified:\n- Complete valid blink registered (duration: ${r3.lastBlinkDuration} ms)\n- Sub-50ms noise dip filtered\n- Face loss resets in-flight episode cleanly`;
         });
 
-        // Test 6: Face Adapter Benchmark Runner (Synthetic Scenarios)
+        // test 6: face adapter benchmark runner (synthetic scenarios)
         registerTest('6. Face Adapter Benchmark Execution', async () => {
             const runner = new AdapterBenchmarkRunner();
             const report = await runner.runBenchmark({

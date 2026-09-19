@@ -1,5 +1,5 @@
 /**
- * Get the car data reduced to just the variables we are interested
+ * get the car data reduced to just the variables we are interested
  * and cleaned of missing data.
  */
 async function getData() {
@@ -15,41 +15,41 @@ async function getData() {
 }
 
 function createModel() {
-    // Create a sequential model
+    // create a sequential model
     const model = tf.sequential();
 
-    // Add a single input layer and a sigmoid layer
+    // add a single input layer and a sigmoid layer
     model.add(tf.layers.dense({ inputShape: [1], units: 1, useBias: true }));
     model.add(tf.layers.dense({ units: 100, activation: 'sigmoid' }));
 
-    // Add an output layer
+    // add an output layer
     model.add(tf.layers.dense({ units: 1, useBias: true }));
 
     return model;
 }
 
 /**
- * Convert the input data to tensors that we can use for machine
+ * convert the input data to tensors that we can use for machine
  * learning. We will also do the important best practices of _shuffling_
  * the data and _normalizing_ the data
  * MPG on the y-axis.
  */
 function convertToTensor(data) {
-    // Wrapping these calculations in a tidy will dispose any
+    // wrapping these calculations in a tidy will dispose any
     // intermediate tensors.
 
     return tf.tidy(() => {
-        // Step 1. Shuffle the data
+        // step 1. shuffle the data
         tf.util.shuffle(data);
 
-        // Step 2. Convert data to Tensor
+        // step 2. convert data to Tensor
         const inputs = data.map(d => d.horsepower)
         const labels = data.map(d => d.mpg);
 
         const inputTensor = tf.tensor2d(inputs, [inputs.length, 1]);
         const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
-        //Step 3. Normalize the data to the range 0 - 1 using min-max scaling
+        // step 3. normalize the data to the range 0 - 1 using min-max scaling
         const inputMax = inputTensor.max();
         const inputMin = inputTensor.min();
         const labelMax = labelTensor.max();
@@ -61,7 +61,7 @@ function convertToTensor(data) {
         return {
             inputs: normalizedInputs,
             labels: normalizedLabels,
-            // Return the min/max bounds so we can use them later.
+            // return the min/max bounds so we can use them later.
             inputMax,
             inputMin,
             labelMax,
@@ -71,7 +71,7 @@ function convertToTensor(data) {
 }
 
 async function trainModel(model, inputs, labels) {
-    // Prepare the model for training.
+    // prepare the model for training.
     model.compile({
         optimizer: tf.train.adam(),
         loss: tf.losses.meanSquaredError,
@@ -96,8 +96,8 @@ async function trainModel(model, inputs, labels) {
 function testModel(model, inputData, normalizationData) {
     const { inputMax, inputMin, labelMin, labelMax } = normalizationData;
 
-    // Generate predictions for a uniform range of numbers between 0 and 1;
-    // We un-normalize the data by doing the inverse of the min-max scaling
+    // generate predictions for a uniform range of numbers between 0 and 1;
+    // we un-normalize the data by doing the inverse of the min-max scaling
     // that we did earlier.
     const [xs, preds] = tf.tidy(() => {
 
@@ -112,7 +112,7 @@ function testModel(model, inputData, normalizationData) {
             .mul(labelMax.sub(labelMin))
             .add(labelMin);
 
-        // Un-normalize the data
+        // un-normalize the data
         return [unNormXs.dataSync(), unNormPreds.dataSync()];
     });
 
@@ -138,7 +138,7 @@ function testModel(model, inputData, normalizationData) {
 }
 
 async function run() {
-    // Load and plot the original input data that we are going to train on.
+    // load and plot the original input data that we are going to train on.
     const data = await getData();
     const values = data.map(d => ({
         x: d.horsepower,
@@ -155,19 +155,19 @@ async function run() {
         }
     );
 
-    // More code will be added below
-    // Create the model
+    // more code will be added below
+    // create the model
     const model = createModel();
     tfvis.show.modelSummary({ name: 'Model Summary' }, model);
-    // Convert the data to a form we can use for training.
+    // convert the data to a form we can use for training.
     const tensorData = convertToTensor(data);
     const { inputs, labels } = tensorData;
 
-    // Train the model
+    // train the model
     await trainModel(model, inputs, labels);
     console.log('Done Training');
 
-    // Make some predictions using the model and compare them to the
+    // make some predictions using the model and compare them to the
     // original data
     testModel(model, data, tensorData);
 }

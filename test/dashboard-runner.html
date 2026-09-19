@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IWAT - Phase 2 Tier 1 Dashboard Browser Verification</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 24px;
+            margin: 0;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 24px;
+        }
+
+        .test-card {
+            background: #252526;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .test-status {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .status-running {
+            background: #feca57;
+            color: #000;
+        }
+
+        .status-pass {
+            background: #2ed573;
+            color: #000;
+        }
+
+        .status-fail {
+            background: #ff4757;
+            color: #fff;
+        }
+
+        .test-details {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #9cdcfe;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+
+        .summary-card {
+            margin-top: 24px;
+            padding: 16px;
+            border-radius: 6px;
+            background: #2d2d30;
+            font-weight: bold;
+        }
+
+        #test-frame-container {
+            margin-top: 20px;
+            border: 1px solid #444;
+            border-radius: 6px;
+            overflow: hidden;
+            height: 420px;
+            background: #fff;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>IWAT Phase 2 Tier 1 Browser Verification Suite</h1>
+    <div class="subtitle">Verifying Tier 1 requirements: deterministic tasks, measurement logging, duplicate prevention, inline feedback, accessibility, and research fixture</div>
+
+    <div id="test-results"></div>
+    <div id="suite-summary" class="summary-card" style="display:none;"></div>
+
+    <div id="test-frame-container">
+        <iframe id="dashboard-frame" src="../dashboard.html" title="Dashboard Test Instance"></iframe>
+    </div>
+
+    <script type="module">
+        const resultsEl = document.getElementById('test-results');
+        const frame = document.getElementById('dashboard-frame');
+        const tests = [];
+
+        function registerTest(name, fn) {
+            tests.push({ name, fn });
+        }
+
+        // wait for iframe to load
+        await new Promise((resolve) => {
+            if (frame.contentDocument && frame.contentDocument.readyState === 'complete') {
+                resolve();
+            } else {
+                frame.addEventListener('load', resolve, { once: true });
+            }
+        });
+
+        // small delay for module initialization
+        await new Promise(r => setTimeout(r, 200));
+
+        let passed = 0;
+        let failed = 0;
+
+        for (const t of tests) {
+            const card = document.createElement('div');
+            card.className = 'test-card';
+            card.innerHTML = `
+                <div class="test-header">
+                    <span>${t.name}</span>
+                    <span class="test-status status-running">Running...</span>
+                </div>
+                <div class="test-details">Executing test logic...</div>
+            `;
+            resultsEl.appendChild(card);
+
+            const statusEl = card.querySelector('.test-status');
+            const detailsEl = card.querySelector('.test-details');
+
+            try {
+                const doc = frame.contentDocument;
+                const win = frame.contentWindow;
+                const details = await t.fn(doc, win);
+                statusEl.className = 'test-status status-pass';
+                statusEl.textContent = 'PASS';
+                detailsEl.textContent = details || 'Passed cleanly.';
+                passed++;
+            } catch (err) {
+                statusEl.className = 'test-status status-fail';
+                statusEl.textContent = 'FAIL';
+                detailsEl.textContent = `${err.message}\n${err.stack || ''}`;
+                failed++;
+            }
+        }
+
+        const summaryEl = document.getElementById('suite-summary');
+        summaryEl.style.display = 'block';
+        summaryEl.innerHTML = `Tests Completed: ${passed + failed} | Passed: <span style="color:#2ed573">${passed}</span> | Failed: <span style="color:#ff4757">${failed}</span>`;
+        window.__TEST_RESULTS__ = { total: passed + failed, passed, failed };
+
+        // =====================================================================
+        // test definitions
+        // =====================================================================
+
+        // test 1: accessible dashboard structure & labels by default
+        registerTest('1. Accessible Controls, Labels, and Textual Status Indicators', async (doc, win) => {
+            // verify not in difficult mode by default
+            if (doc.body.classList.contains('fixture-difficult')) {
+                throw new Error('Default dashboard must be accessible, but fixture-difficult was found on body');
+            }
+
+            // verify textual status indicators in server matrix
+            const statusTexts = doc.querySelectorAll('.status-text');
+            if (statusTexts.length < 4) {
+                throw new Error(`Expected at least 4 textual status indicators, found ${statusTexts.length}`);
+            }
+            const criticalStatus = Array.from(statusTexts).find(el => el.textContent.includes('Critical'));
+            if (!criticalStatus) {
+                throw new Error('Missing textual "Critical" status indicator for overloaded server');
+            }
+
+            // verify visible text on action buttons
+            const actionButtons = doc.querySelectorAll('.action-buttons .btn');
+            for (const btn of actionButtons) {
+                const textSpan = btn.querySelector('.btn-text');
+                if (!textSpan || !textSpan.textContent.trim()) {
+                    throw new Error('Action button missing visible button text in accessible presentation');
+                }
+                const ariaLabel = btn.getAttribute('aria-label');
+                if (!ariaLabel) {
+                    throw new Error('Action button missing aria-label attribute');
+                }
+            }
+
+            // verify form label associations
+            const maxThreadsInput = doc.getElementById('cfg-max-threads');
+            const maxThreadsLabel = doc.querySelector('label[for="cfg-max-threads"]');
+            if (!maxThreadsInput || !maxThreadsLabel) {
+                throw new Error('Form input cfg-max-threads is missing explicit label association');
+            }
+
+            const memoryInput = doc.getElementById('cfg-memory-limit');
+            const memoryLabel = doc.querySelector('label[for="cfg-memory-limit"]');
+            if (!memoryInput || !memoryLabel) {
+                throw new Error('Form input cfg-memory-limit is missing explicit label association');
+            }
+
+            return `Accessible controls verified: 4+ textual status badges present. All action buttons have visible labels and aria-labels. Form inputs explicitly associated with labels.`;
+        });
+
+        // test 2: inline feedback replaces alerts (no blocking alert)
+        registerTest('2. Inline Feedback Replacement (No Blocking Alerts)', async (doc, win) => {
+            let alertCalled = false;
+            win.alert = () => { alertCalled = true; };
+
+            const feedbackContainer = doc.getElementById('inline-feedback');
+            const feedbackMessage = doc.getElementById('feedback-message');
+            if (!feedbackContainer || !feedbackMessage) {
+                throw new Error('Missing #inline-feedback or #feedback-message element in DOM');
+            }
+
+            if (feedbackContainer.getAttribute('role') !== 'status') {
+                throw new Error('Feedback container must have role="status" for screen reader announcements');
+            }
+
+            // click healthy server button to trigger error feedback
+            const healthyRestartBtn = doc.querySelector('tr[data-instance="srv-cluster-a-01"] .btn-primary');
+            healthyRestartBtn.click();
+
+            if (alertCalled) {
+                throw new Error('Blocking window.alert() was called! Alerts must be completely replaced by inline feedback');
+            }
+
+            if (!feedbackContainer.classList.contains('feedback-error')) {
+                throw new Error('Feedback banner did not receive .feedback-error class on incorrect selection');
+            }
+
+            if (!feedbackMessage.textContent.includes('Incorrect choice')) {
+                throw new Error(`Unexpected feedback message: "${feedbackMessage.textContent}"`);
+            }
+
+            return `Inline feedback verified: role="status" and aria-live active. window.alert() was not invoked. Feedback message displayed: "${feedbackMessage.textContent}"`;
+        });
+
+        // test 3: task 1 (server triage) deterministic execution, timing, and duplicate guard
+        registerTest('3. Task 1 Server Triage (Errors, Help, Correction, Timing, Duplicate Guard)', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+            mgr.resetTask('task-server-triage');
+            mgr.setActiveTask('task-server-triage');
+
+            const stateBefore = mgr.getActiveTask().state;
+            if (stateBefore.status !== 'idle' || stateBefore.incorrectChoices !== 0) {
+                throw new Error('Task 1 was not in clean idle state after reset');
+            }
+
+            // 1. incorrect choice
+            const wrongBtn = doc.querySelector('tr[data-instance="srv-cluster-a-03"] .btn-primary');
+            wrongBtn.click();
+
+            const stateAfterError = mgr.getActiveTask().state;
+            if (stateAfterError.incorrectChoices !== 1) {
+                throw new Error(`Expected incorrectChoices to be 1, got ${stateAfterError.incorrectChoices}`);
+            }
+
+            // 2. help request
+            const helpBtn = doc.getElementById('task-help-btn');
+            helpBtn.click();
+
+            const stateAfterHelp = mgr.getActiveTask().state;
+            if (stateAfterHelp.helpUsage !== 1) {
+                throw new Error(`Expected helpUsage to be 1, got ${stateAfterHelp.helpUsage}`);
+            }
+            const hintBox = doc.getElementById('task-hint-box');
+            if (hintBox.style.display === 'none') {
+                throw new Error('Hint box did not expand on help button click');
+            }
+
+            // 3. correct choice: overloaded server srv-cluster-a-02 restart
+            const correctBtn = doc.querySelector('tr[data-instance="srv-cluster-a-02"] .btn-primary');
+            correctBtn.click();
+
+            const stateAfterSuccess = mgr.getActiveTask().state;
+            if (stateAfterSuccess.status !== 'completed') {
+                throw new Error(`Expected status to be "completed", got ${stateAfterSuccess.status}`);
+            }
+            if (stateAfterSuccess.corrections !== 1) {
+                throw new Error(`Expected corrections to be 1 after correcting initial error, got ${stateAfterSuccess.corrections}`);
+            }
+            if (typeof stateAfterSuccess.completionTimeMs !== 'number' || stateAfterSuccess.completionTimeMs <= 0) {
+                throw new Error(`Invalid completionTimeMs: ${stateAfterSuccess.completionTimeMs}`);
+            }
+
+            const recordedEvents = mgr.getEventRecords();
+            const completionEvents = recordedEvents.filter(e => e.eventType === 'TASK_COMPLETED' && e.taskId === 'task-server-triage');
+            if (completionEvents.length !== 1) {
+                throw new Error(`Expected exactly 1 TASK_COMPLETED event, got ${completionEvents.length}`);
+            }
+
+            // 4. duplicate completion attempt
+            const originalCompletionTime = stateAfterSuccess.completionTimeMs;
+            const originalEndTime = stateAfterSuccess.endTime;
+            correctBtn.click();
+
+            const stateAfterDuplicate = mgr.getActiveTask().state;
+            if (stateAfterDuplicate.completionTimeMs !== originalCompletionTime || stateAfterDuplicate.endTime !== originalEndTime) {
+                throw new Error('Duplicate click mutated task completion timing!');
+            }
+            const completionEventsAfterDuplicate = mgr.getEventRecords().filter(e => e.eventType === 'TASK_COMPLETED' && e.taskId === 'task-server-triage');
+            if (completionEventsAfterDuplicate.length !== 1) {
+                throw new Error('Duplicate click emitted duplicate TASK_COMPLETED event!');
+            }
+
+            return `Task 1 verified: Start, incorrect choice, help usage, correction, and completion recorded in ${stateAfterSuccess.completionTimeMs}ms. Duplicate clicks guarded without re-emitting completion events.`;
+        });
+
+        // test 4: task 2 (config update) deterministic validation & form draft tracking
+        registerTest('4. Task 2 Configuration Overrides (Validation, Correction, Form Drafts)', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+            const taskSelect = doc.getElementById('task-select');
+            taskSelect.value = 'task-config-update';
+            taskSelect.dispatchEvent(new Event('change'));
+
+            mgr.resetTask('task-config-update');
+
+            // submit with default (wrong) values: 8192 MB
+            const form = doc.getElementById('config-form');
+            form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+            const stateAfterWrongSubmit = mgr.getActiveTask().state;
+            if (stateAfterWrongSubmit.incorrectChoices !== 1) {
+                throw new Error(`Expected 1 incorrect choice for unconfigured form, got ${stateAfterWrongSubmit.incorrectChoices}`);
+            }
+
+            // enter correct target criteria
+            const memInput = doc.getElementById('cfg-memory-limit');
+            memInput.value = '16384';
+            memInput.dispatchEvent(new Event('input'));
+
+            const stratSelect = doc.getElementById('cfg-fallback-strategy');
+            stratSelect.value = 'Route to failover';
+            stratSelect.dispatchEvent(new Event('change'));
+
+            // verify form draft saved in taskManager
+            const formDraft = mgr.getFormData();
+            if (formDraft.memoryLimit !== '16384' || formDraft.fallbackStrategy !== 'Route to failover') {
+                throw new Error(`Form draft mismatch in state: ${JSON.stringify(formDraft)}`);
+            }
+
+            // submit correct form
+            form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+            const stateAfterSuccess = mgr.getActiveTask().state;
+            if (stateAfterSuccess.status !== 'completed') {
+                throw new Error(`Expected task-config-update to complete, status is ${stateAfterSuccess.status}`);
+            }
+            if (stateAfterSuccess.corrections !== 1) {
+                throw new Error(`Expected corrections to be 1, got ${stateAfterSuccess.corrections}`);
+            }
+
+            return `Task 2 verified: Draft inputs synchronized to state. Wrong submission recorded as incorrect choice. Target criteria (16384 MB, Route to failover) validated and completed cleanly.`;
+        });
+
+        // test 5: research fixture selection and measurement tagging
+        registerTest('5. Research Fixture Selection (Difficult Presentation & Measurement Tagging)', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+            const presSelect = doc.getElementById('presentation-select');
+
+            // switch to difficult research fixture
+            presSelect.value = 'difficult';
+            presSelect.dispatchEvent(new Event('change'));
+
+            if (!doc.body.classList.contains('fixture-difficult')) {
+                throw new Error('body missing .fixture-difficult class when difficult fixture selected');
+            }
+            if (mgr.getPresentation() !== 'difficult') {
+                throw new Error(`Expected taskManager presentation to be "difficult", got ${mgr.getPresentation()}`);
+            }
+
+            // check that button text is hidden in difficult mode
+            const btnText = doc.querySelector('.action-buttons .btn-text');
+            const computedBtnTextStyle = win.getComputedStyle(btnText);
+            if (computedBtnTextStyle.display !== 'none') {
+                throw new Error(`Expected .btn-text to have display: none in difficult fixture, got ${computedBtnTextStyle.display}`);
+            }
+
+            // trigger action in difficult mode
+            const restartBtn = doc.querySelector('tr[data-instance="srv-cluster-a-01"] .btn-primary');
+            restartBtn.click();
+
+            // verify event tagged with presentation: 'difficult'
+            const events = mgr.getEventRecords();
+            const lastEvent = events[events.length - 1];
+            if (lastEvent.presentation !== 'difficult') {
+                throw new Error(`Event recorded in difficult fixture must have presentation="difficult", got "${lastEvent.presentation}"`);
+            }
+
+            // switch back to accessible
+            presSelect.value = 'accessible';
+            presSelect.dispatchEvent(new Event('change'));
+            if (doc.body.classList.contains('fixture-difficult')) {
+                throw new Error('body retained .fixture-difficult after switching back to accessible');
+            }
+            if (mgr.getPresentation() !== 'accessible') {
+                throw new Error(`Expected taskManager presentation to be "accessible", got ${mgr.getPresentation()}`);
+            }
+
+            return `Research fixture verified: .fixture-difficult applied, visual traps active, events tagged with presentation="difficult", and seamless switch back to accessible default.`;
+        });
+
+        // test 6: state preservation across view and mode changes
+        registerTest('6. User Input and Progress State Preservation Design', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+
+            // set custom draft inputs
+            const memInput = doc.getElementById('cfg-memory-limit');
+            memInput.value = '32768';
+            memInput.dispatchEvent(new Event('input'));
+
+            const threadsInput = doc.getElementById('cfg-max-threads');
+            threadsInput.value = '2048';
+            threadsInput.dispatchEvent(new Event('input'));
+
+            // take state snapshot
+            const snapshot = mgr.getState();
+
+            // simulate restore
+            const restored = mgr.restoreState(snapshot);
+            if (!restored) {
+                throw new Error('restoreState returned false');
+            }
+
+            const currentDraft = mgr.getFormData();
+            if (currentDraft.memoryLimit !== '32768' || currentDraft.maxThreads !== '2048') {
+                throw new Error(`State restoration lost user input: ${JSON.stringify(currentDraft)}`);
+            }
+
+            return `State preservation verified: Draft inputs and progress data serialize and restore cleanly without losing user values.`;
+        });
+    </script>
+</body>
+
+</html>

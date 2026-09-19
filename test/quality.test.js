@@ -1,4 +1,4 @@
-// quality.test.js - Unit tests for quality gating and rolling coverage tracking
+// quality.test.js - unit tests for quality gating and rolling coverage tracking
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { QualityGate } from '../js/features/quality.js';
@@ -87,7 +87,7 @@ test('QualityGate rolling window expires when read after time passes without new
 
     assert.equal(gate.getDetectionCoverage(t0 + 200), 100);
 
-    // After 3 seconds of no frames (stall)
+    // after 3 seconds of no frames (stall)
     assert.equal(gate.getDetectionCoverage(t0 + 3000), 0);
 });
 
@@ -121,5 +121,5 @@ test('QualityGate differentiates pure face coverage from valid sample coverage d
 
     const metrics = gate.getMetrics(now + 500);
     assert.equal(metrics.faceCoveragePercent, 100); // 100% of frames had a face
-    assert.equal(metrics.coveragePercent, 50);     // Only 50% passed sample quality gates
+    assert.equal(metrics.coveragePercent, 50);     // only 50% passed sample quality gates
 });

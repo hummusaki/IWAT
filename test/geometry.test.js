@@ -1,4 +1,4 @@
-// geometry.test.js - Unit tests for aspect ratio scaling, relative projection, and finite validation
+// geometry.test.js - unit tests for aspect ratio scaling, relative projection, and finite validation
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeProcessingCanvasDimensions, getRelativePupilPos, buildGazeFeatureVector } from '../js/features/geometry.js';
@@ -30,10 +30,10 @@ test('computeProcessingCanvasDimensions handles zero or non-finite inputs safely
 });
 
 test('getRelativePupilPos calculates normalized pupil displacement', () => {
-    // Eye corners horizontal along x axis from 100 to 200 (width = 100)
+    // eye corners horizontal along x axis from 100 to 200 (width = 100)
     const inner = { x: 100, y: 150 };
     const outer = { x: 200, y: 150 };
-    // Pupil dead center between inner and outer
+    // pupil dead center between inner and outer
     const pupil = { x: 150, y: 150 };
 
     const res = getRelativePupilPos(pupil, outer, inner);
@@ -67,7 +67,7 @@ test('buildGazeFeatureVector builds 4D vector and validates finiteness', () => {
     assert.equal(res.valid, true);
     assert.deepEqual(res.features, [0.48, -0.01, 0.45, -0.02]);
 
-    // Invalid right eye
+    // invalid right eye
     const invalidRight = { valid: false, reason: 'non_finite_coordinates' };
     const failRes = buildGazeFeatureVector(left, invalidRight);
     assert.equal(failRes.valid, false);
