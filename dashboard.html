@@ -20,18 +20,26 @@
                 <a href="#configs" class="nav-item">Data Processing Configs</a>
                 <a href="#telemetry" class="nav-item">User Telemetry</a>
             </div>
-            <div class="nav-group">
-                <span class="nav-group-title">Infrastructure</span>
-                <a href="#cloud" class="nav-item">Cloud Integration Setup</a>
-                <a href="#auth" class="nav-item">Auth Providers</a>
-                <a href="#billing" class="nav-item">Billing & Metrics</a>
-            </div>
-            <div class="nav-group">
-                <span class="nav-group-title">Preferences</span>
-                <a href="#settings" class="nav-item">Settings</a>
-                <a href="#preferences" class="nav-item">Advanced Preferences</a>
-                <a href="#console" class="nav-item">Developer Console</a>
-            </div>
+            <!-- secondary navigation progressive disclosure -->
+            <details id="sidebar-secondary-disclosure" class="sidebar-secondary-disclosure" open>
+                <summary class="sidebar-secondary-summary">
+                    <span class="secondary-summary-label">Secondary Navigation</span>
+                </summary>
+                <div class="sidebar-secondary-groups">
+                    <div class="nav-group">
+                        <span class="nav-group-title">Infrastructure</span>
+                        <a href="#cloud" class="nav-item">Cloud Integration Setup</a>
+                        <a href="#auth" class="nav-item">Auth Providers</a>
+                        <a href="#billing" class="nav-item">Billing & Metrics</a>
+                    </div>
+                    <div class="nav-group">
+                        <span class="nav-group-title">Preferences</span>
+                        <a href="#settings" class="nav-item">Settings</a>
+                        <a href="#preferences" class="nav-item">Advanced Preferences</a>
+                        <a href="#console" class="nav-item">Developer Console</a>
+                    </div>
+                </div>
+            </details>
 
             <!-- warning indicator in sidebar -->
             <div class="sidebar-status-banner" role="status">
@@ -69,6 +77,13 @@
                             </select>
                             <span id="task-status-badge" class="task-badge badge-idle" aria-live="polite">Status: Idle</span>
                         </div>
+                        <div class="mode-controls">
+                            <label for="mode-select" class="task-control-label">Mode:</label>
+                            <select id="mode-select" class="mode-select-input" aria-label="Select adaptation mode">
+                                <option value="standard">Standard Dashboard</option>
+                                <option value="focused">Focused Mode</option>
+                            </select>
+                        </div>
                         <div class="research-controls">
                             <label for="presentation-select" class="task-control-label">Presentation:</label>
                             <select id="presentation-select" class="presentation-select-input" aria-label="Select presentation fixture">
@@ -84,6 +99,15 @@
                         </div>
                         <div class="task-instructions">
                             <strong>Instructions:</strong> <span id="task-instructions-text">Loading instructions...</span>
+                        </div>
+                        <!-- dynamic task step guidance (active in focused mode) -->
+                        <div id="task-step-guidance" class="task-step-guidance" style="display: none;" role="region" aria-label="Step Guidance">
+                            <div class="step-guidance-title">
+                                <strong>Active Step Guidance:</strong>
+                            </div>
+                            <ol id="task-step-list" class="task-step-list" aria-live="polite">
+                                <!-- populated dynamically by dashboard controller -->
+                            </ol>
                         </div>
                         <div id="task-hint-box" class="task-hint-box" style="display: none;" role="region" aria-label="Task Hint">
                             <strong>Hint:</strong> <span id="task-hint-text"></span>
@@ -129,129 +153,149 @@
                 </div>
 
                 <!-- global server utilization matrix -->
-                <section class="panel-card" aria-labelledby="server-matrix-heading">
-                    <h3 id="server-matrix-heading">Global Server Utilization Matrix</h3>
+                <section id="server-matrix-panel" class="panel-card task-workspace-panel" data-task-panel="task-server-triage" aria-labelledby="server-matrix-heading">
+                    <div class="panel-header-row">
+                        <div class="panel-title-wrap">
+                            <span class="task-focus-tag" aria-hidden="true" style="display: none;">Focused Task Workspace</span>
+                            <h3 id="server-matrix-heading">Global Server Utilization Matrix</h3>
+                        </div>
+                        <button type="button" id="server-matrix-toggle-btn" class="secondary-toggle-btn" aria-expanded="true" style="display: none;">
+                            <span class="toggle-btn-text">Hide Details</span>
+                        </button>
+                    </div>
 
-                    <div class="table-responsive">
-                        <table class="dense-table" aria-describedby="server-matrix-heading">
-                            <thead>
-                                <tr>
-                                    <th scope="col">Instance ID</th>
-                                    <th scope="col">Status</th>
-                                    <th scope="col">CPU %</th>
-                                    <th scope="col">RAM %</th>
-                                    <th scope="col">Network I/O</th>
-                                    <th scope="col">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr data-instance="srv-cluster-a-01">
-                                    <td><strong>srv-cluster-a-01</strong></td>
-                                    <td>
-                                        <span class="status-badge status-healthy" aria-label="Status: Healthy">
-                                            <span class="status-dot" aria-hidden="true"></span>
-                                            <span class="status-text">Healthy</span>
-                                        </span>
-                                    </td>
-                                    <td>12.4%</td>
-                                    <td>45.1%</td>
-                                    <td>1.2 GB/s</td>
-                                    <td class="action-buttons">
-                                        <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-01" aria-label="Restart srv-cluster-a-01"><span class="btn-text">Restart</span></button>
-                                        <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-01" aria-label="Isolate srv-cluster-a-01"><span class="btn-text">Isolate</span></button>
-                                    </td>
-                                </tr>
-                                <tr data-instance="srv-cluster-a-02">
-                                    <td><strong>srv-cluster-a-02</strong></td>
-                                    <td>
-                                        <span class="status-badge status-critical" aria-label="Status: Critical Overloaded">
-                                            <span class="status-dot" aria-hidden="true"></span>
-                                            <span class="status-text">Critical (Overloaded)</span>
-                                        </span>
-                                    </td>
-                                    <td><strong>99.9%</strong></td>
-                                    <td><strong>98.2%</strong></td>
-                                    <td>0.1 GB/s</td>
-                                    <td class="action-buttons">
-                                        <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-02" aria-label="Restart srv-cluster-a-02"><span class="btn-text">Restart</span></button>
-                                        <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-02" aria-label="Isolate srv-cluster-a-02"><span class="btn-text">Isolate</span></button>
-                                    </td>
-                                </tr>
-                                <tr data-instance="srv-cluster-a-03">
-                                    <td><strong>srv-cluster-a-03</strong></td>
-                                    <td>
-                                        <span class="status-badge status-healthy" aria-label="Status: Healthy">
-                                            <span class="status-dot" aria-hidden="true"></span>
-                                            <span class="status-text">Healthy</span>
-                                        </span>
-                                    </td>
-                                    <td>45.0%</td>
-                                    <td>60.0%</td>
-                                    <td>2.4 GB/s</td>
-                                    <td class="action-buttons">
-                                        <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-03" aria-label="Restart srv-cluster-a-03"><span class="btn-text">Restart</span></button>
-                                        <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-03" aria-label="Isolate srv-cluster-a-03"><span class="btn-text">Isolate</span></button>
-                                    </td>
-                                </tr>
-                                <tr data-instance="db-node-primary">
-                                    <td><strong>db-node-primary</strong></td>
-                                    <td>
-                                        <span class="status-badge status-healthy" aria-label="Status: Healthy">
-                                            <span class="status-dot" aria-hidden="true"></span>
-                                            <span class="status-text">Healthy</span>
-                                        </span>
-                                    </td>
-                                    <td>88.1%</td>
-                                    <td>72.5%</td>
-                                    <td>5.5 GB/s</td>
-                                    <td class="action-buttons">
-                                        <button type="button" class="btn btn-primary" data-action="restart" data-instance="db-node-primary" aria-label="Restart db-node-primary"><span class="btn-text">Restart</span></button>
-                                        <button type="button" class="btn btn-danger" data-action="isolate" data-instance="db-node-primary" aria-label="Isolate db-node-primary"><span class="btn-text">Isolate</span></button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div id="server-matrix-content" class="panel-collapsible-content">
+                        <div class="table-responsive">
+                            <table class="dense-table" aria-describedby="server-matrix-heading">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Instance ID</th>
+                                        <th scope="col">Status</th>
+                                        <th scope="col">CPU %</th>
+                                        <th scope="col">RAM %</th>
+                                        <th scope="col">Network I/O</th>
+                                        <th scope="col">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr data-instance="srv-cluster-a-01">
+                                        <td><strong>srv-cluster-a-01</strong></td>
+                                        <td>
+                                            <span class="status-badge status-healthy" aria-label="Status: Healthy">
+                                                <span class="status-dot" aria-hidden="true"></span>
+                                                <span class="status-text">Healthy</span>
+                                            </span>
+                                        </td>
+                                        <td>12.4%</td>
+                                        <td>45.1%</td>
+                                        <td>1.2 GB/s</td>
+                                        <td class="action-buttons">
+                                            <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-01" aria-label="Restart srv-cluster-a-01"><span class="btn-text">Restart</span></button>
+                                            <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-01" aria-label="Isolate srv-cluster-a-01"><span class="btn-text">Isolate</span></button>
+                                        </td>
+                                    </tr>
+                                    <tr data-instance="srv-cluster-a-02">
+                                        <td><strong>srv-cluster-a-02</strong></td>
+                                        <td>
+                                            <span class="status-badge status-critical" aria-label="Status: Critical Overloaded">
+                                                <span class="status-dot" aria-hidden="true"></span>
+                                                <span class="status-text">Critical (Overloaded)</span>
+                                            </span>
+                                        </td>
+                                        <td><strong>99.9%</strong></td>
+                                        <td><strong>98.2%</strong></td>
+                                        <td>0.1 GB/s</td>
+                                        <td class="action-buttons">
+                                            <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-02" aria-label="Restart srv-cluster-a-02"><span class="btn-text">Restart</span></button>
+                                            <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-02" aria-label="Isolate srv-cluster-a-02"><span class="btn-text">Isolate</span></button>
+                                        </td>
+                                    </tr>
+                                    <tr data-instance="srv-cluster-a-03">
+                                        <td><strong>srv-cluster-a-03</strong></td>
+                                        <td>
+                                            <span class="status-badge status-healthy" aria-label="Status: Healthy">
+                                                <span class="status-dot" aria-hidden="true"></span>
+                                                <span class="status-text">Healthy</span>
+                                            </span>
+                                        </td>
+                                        <td>45.0%</td>
+                                        <td>60.0%</td>
+                                        <td>2.4 GB/s</td>
+                                        <td class="action-buttons">
+                                            <button type="button" class="btn btn-primary" data-action="restart" data-instance="srv-cluster-a-03" aria-label="Restart srv-cluster-a-03"><span class="btn-text">Restart</span></button>
+                                            <button type="button" class="btn btn-danger" data-action="isolate" data-instance="srv-cluster-a-03" aria-label="Isolate srv-cluster-a-03"><span class="btn-text">Isolate</span></button>
+                                        </td>
+                                    </tr>
+                                    <tr data-instance="db-node-primary">
+                                        <td><strong>db-node-primary</strong></td>
+                                        <td>
+                                            <span class="status-badge status-healthy" aria-label="Status: Healthy">
+                                                <span class="status-dot" aria-hidden="true"></span>
+                                                <span class="status-text">Healthy</span>
+                                            </span>
+                                        </td>
+                                        <td>88.1%</td>
+                                        <td>72.5%</td>
+                                        <td>5.5 GB/s</td>
+                                        <td class="action-buttons">
+                                            <button type="button" class="btn btn-primary" data-action="restart" data-instance="db-node-primary" aria-label="Restart db-node-primary"><span class="btn-text">Restart</span></button>
+                                            <button type="button" class="btn btn-danger" data-action="isolate" data-instance="db-node-primary" aria-label="Isolate db-node-primary"><span class="btn-text">Isolate</span></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
                 <!-- configuration overrides form panel -->
-                <section class="panel-card" aria-labelledby="config-heading">
-                    <h3 id="config-heading">Configuration Overrides</h3>
-
-                    <form id="config-form" class="settings-panel" novalidate>
-                        <div class="form-group">
-                            <label for="cfg-max-threads">Max Thread Count</label>
-                            <input type="number" id="cfg-max-threads" name="maxThreads" value="1024" min="1" max="16384" step="1">
+                <section id="config-panel" class="panel-card task-workspace-panel" data-task-panel="task-config-update" aria-labelledby="config-heading">
+                    <div class="panel-header-row">
+                        <div class="panel-title-wrap">
+                            <span class="task-focus-tag" aria-hidden="true" style="display: none;">Focused Task Workspace</span>
+                            <h3 id="config-heading">Configuration Overrides</h3>
                         </div>
+                        <button type="button" id="config-toggle-btn" class="secondary-toggle-btn" aria-expanded="true" style="display: none;">
+                            <span class="toggle-btn-text">Hide Details</span>
+                        </button>
+                    </div>
 
-                        <div class="form-group">
-                            <label for="cfg-memory-limit">Memory Limit (MB)</label>
-                            <input type="number" id="cfg-memory-limit" name="memoryLimit" value="8192" min="512" max="65536" step="256">
+                    <div id="config-content" class="panel-collapsible-content">
+                        <form id="config-form" class="settings-panel" novalidate>
+                            <div class="form-group">
+                                <label for="cfg-max-threads">Max Thread Count</label>
+                                <input type="number" id="cfg-max-threads" name="maxThreads" value="1024" min="1" max="16384" step="1">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="cfg-memory-limit">Memory Limit (MB)</label>
+                                <input type="number" id="cfg-memory-limit" name="memoryLimit" value="8192" min="512" max="65536" step="256">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="cfg-fallback-strategy">Fallback Strategy</label>
+                                <select id="cfg-fallback-strategy" name="fallbackStrategy">
+                                    <option value="Route to failover">Route to failover</option>
+                                    <option value="Drop packets">Drop packets</option>
+                                    <option value="Queue (unbounded)">Queue (unbounded)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group form-group-checkbox">
+                                <input type="checkbox" id="cfg-aggressive-caching" name="aggressiveCaching">
+                                <label for="cfg-aggressive-caching">Aggressive Caching</label>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" id="cfg-save-btn" class="btn btn-primary"><span class="btn-text">Save Configuration</span></button>
+                                <button type="button" id="cfg-revert-btn" class="btn btn-secondary"><span class="btn-text">Revert Changes</span></button>
+                            </div>
+                        </form>
+
+                        <div class="footnote-disclaimer">
+                            Confidential. Do not distribute. All configurations are subject to automated overwrite by the central policy daemon.
+                            If you experience errors, consult manual section 4.B paragraph 12.
                         </div>
-
-                        <div class="form-group">
-                            <label for="cfg-fallback-strategy">Fallback Strategy</label>
-                            <select id="cfg-fallback-strategy" name="fallbackStrategy">
-                                <option value="Route to failover">Route to failover</option>
-                                <option value="Drop packets">Drop packets</option>
-                                <option value="Queue (unbounded)">Queue (unbounded)</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group form-group-checkbox">
-                            <input type="checkbox" id="cfg-aggressive-caching" name="aggressiveCaching">
-                            <label for="cfg-aggressive-caching">Aggressive Caching</label>
-                        </div>
-
-                        <div class="form-actions">
-                            <button type="submit" id="cfg-save-btn" class="btn btn-primary"><span class="btn-text">Save Configuration</span></button>
-                            <button type="button" id="cfg-revert-btn" class="btn btn-secondary"><span class="btn-text">Revert Changes</span></button>
-                        </div>
-                    </form>
-
-                    <div class="footnote-disclaimer">
-                        Confidential. Do not distribute. All configurations are subject to automated overwrite by the central policy daemon.
-                        If you experience errors, consult manual section 4.B paragraph 12.
                     </div>
                 </section>
 
