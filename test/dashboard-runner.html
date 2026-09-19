@@ -447,6 +447,280 @@
 
             return `State preservation verified: Draft inputs and progress data serialize and restore cleanly without losing user values.`;
         });
+
+        // test 7: tier 2 - mode state API, local selector, and idempotent transitions
+        registerTest('7. Adaptation Mode Local API, Selector, and Idempotency', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+            const stateApi = win.dashboardTaskState;
+            const modeSelect = doc.getElementById('mode-select');
+
+            if (!modeSelect) {
+                throw new Error('Missing #mode-select local mode selector element');
+            }
+
+            // initial state must be standard
+            if (mgr.getMode() !== 'standard' || stateApi.getMode() !== 'standard') {
+                throw new Error(`Expected initial mode to be "standard", got ${mgr.getMode()}`);
+            }
+
+            // switch to focused via local API
+            const beforeCount = mgr.getEventRecords().length;
+            const switched = stateApi.setMode('focused', 'test_runner_api');
+            if (!switched) {
+                throw new Error('setMode("focused") returned false');
+            }
+            if (stateApi.getMode() !== 'focused' || modeSelect.value !== 'focused') {
+                throw new Error('Mode state or selector did not update to "focused"');
+            }
+
+            // verify transition event logged with reason
+            const eventsAfter = mgr.getEventRecords();
+            const transitionEvent = eventsAfter[eventsAfter.length - 1];
+            if (transitionEvent.eventType !== 'MODE_CHANGED') {
+                throw new Error(`Expected MODE_CHANGED event, got ${transitionEvent.eventType}`);
+            }
+            if (transitionEvent.details.fromMode !== 'standard' || transitionEvent.details.toMode !== 'focused' || transitionEvent.details.reason !== 'test_runner_api') {
+                throw new Error(`MODE_CHANGED event details mismatch: ${JSON.stringify(transitionEvent.details)}`);
+            }
+
+            // test repeated requests are idempotent
+            const duplicateResult = stateApi.setMode('focused', 'duplicate_call');
+            if (duplicateResult !== false) {
+                throw new Error('Repeated setMode("focused") must return false');
+            }
+            if (mgr.getEventRecords().length !== eventsAfter.length) {
+                throw new Error('Duplicate setMode call created duplicate transition event!');
+            }
+
+            // test invalid mode rejected
+            const invalidResult = mgr.setMode('invalid_mode');
+            if (invalidResult !== false) {
+                throw new Error('setMode with invalid mode must return false');
+            }
+
+            // switch back to standard via selector change event
+            modeSelect.value = 'standard';
+            modeSelect.dispatchEvent(new Event('change'));
+            if (stateApi.getMode() !== 'standard') {
+                throw new Error('Mode select change event did not switch mode to standard');
+            }
+
+            return `Mode API verified: Initial standard mode confirmed. Switched to focused via API with MODE_CHANGED event logged. Idempotency verified without duplicate events. Selector change event restored standard mode.`;
+        });
+
+        // test 8: tier 2 - active task grouping and progressive disclosure of secondary details
+        registerTest('8. Focused Mode Task Grouping & Progressive Disclosure', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+            const modeSelect = doc.getElementById('mode-select');
+            const taskSelect = doc.getElementById('task-select');
+
+            // set active task to task-server-triage and mode to focused
+            taskSelect.value = 'task-server-triage';
+            taskSelect.dispatchEvent(new Event('change'));
+
+            modeSelect.value = 'focused';
+            modeSelect.dispatchEvent(new Event('change'));
+
+            // verify body has .mode-focused class
+            if (!doc.body.classList.contains('mode-focused')) {
+                throw new Error('document.body missing .mode-focused class');
+            }
+
+            // verify server matrix panel is primary
+            const serverPanel = doc.getElementById('server-matrix-panel');
+            const configPanel = doc.getElementById('config-panel');
+
+            if (!serverPanel.classList.contains('is-primary-task')) {
+                throw new Error('Server matrix panel must have .is-primary-task in focused mode when server triage is active');
+            }
+            const serverTag = serverPanel.querySelector('.task-focus-tag');
+            if (!serverTag || serverTag.style.display === 'none') {
+                throw new Error('Server matrix panel missing visible task focus tag in focused mode');
+            }
+
+            // verify config panel is secondary and collapsed by default
+            if (!configPanel.classList.contains('is-secondary-task')) {
+                throw new Error('Config panel must have .is-secondary-task in focused mode when server triage is active');
+            }
+            const configContent = doc.getElementById('config-content');
+            if (configContent.style.display !== 'none') {
+                throw new Error('Config panel content must be collapsed (display: none) by default in focused mode');
+            }
+            const configToggle = doc.getElementById('config-toggle-btn');
+            if (!configToggle || configToggle.style.display === 'none') {
+                throw new Error('Config toggle button must be visible for progressive disclosure');
+            }
+            if (configToggle.getAttribute('aria-expanded') !== 'false') {
+                throw new Error('Config toggle button must have aria-expanded="false" when collapsed');
+            }
+
+            // test expanding secondary panel via toggle button
+            configToggle.click();
+            if (configContent.style.display !== 'block' || configToggle.getAttribute('aria-expanded') !== 'true') {
+                throw new Error('Clicking secondary toggle did not expand configuration overrides content');
+            }
+
+            // collapse it back
+            configToggle.click();
+            if (configContent.style.display !== 'none') {
+                throw new Error('Clicking secondary toggle did not re-collapse configuration overrides content');
+            }
+
+            // restore standard mode
+            modeSelect.value = 'standard';
+            modeSelect.dispatchEvent(new Event('change'));
+            if (configContent.style.display === 'none') {
+                throw new Error('Restoring standard mode must make all panels visible');
+            }
+
+            return `Task grouping & progressive disclosure verified: Primary active task grouped with visual accent and badge. Secondary panel collapsed by default with accessible aria-expanded toggle. Standard mode restores all panels.`;
+        });
+
+        // test 9: tier 2 - task-relevant step guidance in focused mode
+        registerTest('9. Task-Relevant Step Guidance & Live Updates', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+            const modeSelect = doc.getElementById('mode-select');
+            const taskSelect = doc.getElementById('task-select');
+
+            // switch to config update task and focused mode
+            taskSelect.value = 'task-config-update';
+            taskSelect.dispatchEvent(new Event('change'));
+
+            modeSelect.value = 'focused';
+            modeSelect.dispatchEvent(new Event('change'));
+
+            const guidanceContainer = doc.getElementById('task-step-guidance');
+            if (!guidanceContainer || guidanceContainer.style.display === 'none') {
+                throw new Error('Task step guidance container must be visible in focused mode');
+            }
+
+            const stepItems = doc.querySelectorAll('#task-step-list .step-item');
+            if (stepItems.length !== 3) {
+                throw new Error(`Expected 3 task step guidance items, found ${stepItems.length}`);
+            }
+
+            // step 1 should initially be current / incomplete because memoryLimit is default (8192)
+            const memInput = doc.getElementById('cfg-memory-limit');
+            memInput.value = '16384';
+            memInput.dispatchEvent(new Event('input'));
+
+            // verify live step guidance updated: step 1 should now be complete
+            const updatedSteps = doc.querySelectorAll('#task-step-list .step-item');
+            const firstStepBadge = updatedSteps[0].querySelector('.step-tag');
+            if (!firstStepBadge || !firstStepBadge.textContent.includes('Completed')) {
+                throw new Error('Step 1 did not dynamically update to Completed when memory limit 16384 was entered');
+            }
+
+            // restore standard mode
+            modeSelect.value = 'standard';
+            modeSelect.dispatchEvent(new Event('change'));
+            if (guidanceContainer.style.display !== 'none') {
+                throw new Error('Step guidance container must be hidden in standard mode');
+            }
+
+            return `Step guidance verified: 3 structured step items displayed in focused mode. Step status dynamically updated to Completed when target memory limit was typed. Hidden in standard mode.`;
+        });
+
+        // test 10: tier 2 - keyboard focus preservation and predictable fallback
+        registerTest('10. Keyboard Focus Preservation & Predictable Movement', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+            const stateApi = win.dashboardTaskState;
+            const modeSelect = doc.getElementById('mode-select');
+            const taskSelect = doc.getElementById('task-select');
+
+            taskSelect.value = 'task-server-triage';
+            taskSelect.dispatchEvent(new Event('change'));
+            stateApi.setMode('standard', 'setup');
+
+            // 1. case 1: focused on element that remains visible (e.g. server restart button)
+            const restartBtn = doc.querySelector('tr[data-instance="srv-cluster-a-01"] .btn-primary');
+            restartBtn.focus();
+            if (doc.activeElement !== restartBtn) {
+                throw new Error('Failed to set initial focus to restart button');
+            }
+
+            // switch to focused mode
+            stateApi.setMode('focused', 'test_focus_preserve');
+
+            // focus should remain on restartBtn because server matrix is visible
+            if (doc.activeElement !== restartBtn) {
+                throw new Error(`Focus was unexpectedly moved away from visible button to: ${doc.activeElement?.tagName}`);
+            }
+
+            // 2. case 2: switch back to standard, expand secondary, focus inside secondary
+            stateApi.setMode('standard', 'test_prep_collapse');
+            const memInput = doc.getElementById('cfg-memory-limit');
+            memInput.focus();
+            if (doc.activeElement !== memInput) {
+                throw new Error('Failed to set focus to memory limit input in standard mode');
+            }
+
+            // now switch to focused mode while server triage is active (config panel collapses!)
+            stateApi.setMode('focused', 'test_focus_collapse');
+
+            // because memInput became hidden in collapsed config panel, focus must move predictably to visible control
+            const currentFocused = doc.activeElement;
+            const configToggle = doc.getElementById('config-toggle-btn');
+            const isExpectedTarget = currentFocused === configToggle || currentFocused === modeSelect || currentFocused === taskSelect;
+            if (!isExpectedTarget || currentFocused === doc.body) {
+                throw new Error(`Predictable focus fallback failed! Focused element is: ${currentFocused?.tagName}#${currentFocused?.id}`);
+            }
+
+            // restore standard mode
+            stateApi.setMode('standard', 'cleanup');
+
+            return `Focus management verified: Visible controls retain focus across mode switches. When focused element becomes hidden, focus moves predictably to the secondary toggle button without dropping to body.`;
+        });
+
+        // test 11: tier 2 - full task execution with mode switches mid-task
+        registerTest('11. Mode Switching During Active Task Preserves State & Timers', async (doc, win) => {
+            const mgr = win.dashboardTaskManager;
+            const stateApi = win.dashboardTaskState;
+            const taskSelect = doc.getElementById('task-select');
+
+            // start server triage in standard mode
+            taskSelect.value = 'task-server-triage';
+            taskSelect.dispatchEvent(new Event('change'));
+            mgr.resetTask('task-server-triage');
+            stateApi.setMode('standard', 'task_start');
+
+            // record incorrect choice
+            const wrongBtn = doc.querySelector('tr[data-instance="srv-cluster-a-03"] .btn-primary');
+            wrongBtn.click();
+
+            const stateMid = mgr.getActiveTask().state;
+            if (stateMid.incorrectChoices !== 1 || stateMid.status !== 'in_progress') {
+                throw new Error('Failed to initialize partial task state in standard mode');
+            }
+            const startTimeBefore = stateMid.startTime;
+
+            // switch mode to focused mid-task
+            stateApi.setMode('focused', 'mid_task_adaptation');
+
+            // verify metrics and timer are completely preserved
+            const stateAfterSwitch = mgr.getActiveTask().state;
+            if (stateAfterSwitch.incorrectChoices !== 1 || stateAfterSwitch.startTime !== startTimeBefore) {
+                throw new Error('Switching mode corrupted task metrics or start timestamp!');
+            }
+
+            // complete task in focused mode
+            const targetRestartBtn = doc.querySelector('tr[data-instance="srv-cluster-a-02"] .btn-primary');
+            targetRestartBtn.click();
+
+            const stateComplete = mgr.getActiveTask().state;
+            if (stateComplete.status !== 'completed' || stateComplete.corrections !== 1) {
+                throw new Error('Completing task in focused mode failed');
+            }
+
+            // switch mode back to standard
+            stateApi.setMode('standard', 'after_task_complete');
+            const stateFinal = mgr.getActiveTask().state;
+            if (stateFinal.status !== 'completed' || stateFinal.completionTimeMs !== stateComplete.completionTimeMs) {
+                throw new Error('Switching back to standard mode altered completion status');
+            }
+
+            return `Mid-task switching verified: Errors, corrections, start time, and completion metrics preserved with zero loss across standard/focused adaptation modes.`;
+        });
     </script>
 </body>
 

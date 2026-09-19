@@ -96,4 +96,33 @@ test('js/dashboard.js contains zero blocking alert calls', () => {
 test('js/dashboard.js exposes task state and manager to window', () => {
     assert.ok(jsContent.includes('window.dashboardTaskManager = taskManager;'), 'missing dashboardTaskManager window export');
     assert.ok(jsContent.includes('window.dashboardTaskState = {'), 'missing dashboardTaskState window export');
+    assert.ok(jsContent.includes('getMode: () => taskManager.getMode()'), 'missing getMode window export');
+    assert.ok(jsContent.includes('setMode: (mode, reason = \'manual\')'), 'missing setMode window export');
 });
+
+test('dashboard.html includes mode selector and step guidance container', () => {
+    assert.ok(htmlContent.includes('id="mode-select"'), 'missing mode-select element');
+    assert.ok(htmlContent.includes('value="standard"'), 'missing standard mode option');
+    assert.ok(htmlContent.includes('value="focused"'), 'missing focused mode option');
+    assert.ok(htmlContent.includes('id="task-step-guidance"'), 'missing task-step-guidance element');
+    assert.ok(htmlContent.includes('id="task-step-list"'), 'missing task-step-list element');
+});
+
+test('dashboard.html groups tasks into workspace panels with progressive disclosure toggles', () => {
+    assert.ok(htmlContent.includes('id="server-matrix-panel"'), 'missing server-matrix-panel element');
+    assert.ok(htmlContent.includes('id="config-panel"'), 'missing config-panel element');
+    assert.ok(htmlContent.includes('id="server-matrix-toggle-btn"'), 'missing server-matrix-toggle-btn element');
+    assert.ok(htmlContent.includes('id="config-toggle-btn"'), 'missing config-toggle-btn element');
+    assert.ok(htmlContent.includes('id="sidebar-secondary-disclosure"'), 'missing sidebar-secondary-disclosure element');
+});
+
+test('css/style.css defines focused mode adaptation rules and task step styles', () => {
+    assert.ok(cssContent.includes('.mode-select-input'), 'missing .mode-select-input rule');
+    assert.ok(cssContent.includes('body.mode-focused'), 'missing body.mode-focused rule');
+    assert.ok(cssContent.includes('.task-step-guidance'), 'missing .task-step-guidance rule');
+    assert.ok(cssContent.includes('.step-item.step-complete'), 'missing .step-item.step-complete rule');
+    assert.ok(cssContent.includes('.step-item.step-current'), 'missing .step-item.step-current rule');
+    assert.ok(cssContent.includes('.task-focus-tag'), 'missing .task-focus-tag rule');
+    assert.ok(cssContent.includes('.secondary-toggle-btn'), 'missing .secondary-toggle-btn rule');
+});
+
