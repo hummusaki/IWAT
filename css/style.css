@@ -193,7 +193,8 @@ body {
     padding-bottom: 10px;
 }
 
-.task-controls, .research-controls {
+.task-controls,
+.research-controls {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -205,7 +206,8 @@ body {
     color: var(--text-secondary);
 }
 
-.task-select-input, .presentation-select-input {
+.task-select-input,
+.presentation-select-input {
     padding: 6px 10px;
     font-size: 13px;
     font-weight: 500;
@@ -254,12 +256,14 @@ body {
     padding: 12px 14px;
 }
 
-.task-objective, .task-instructions {
+.task-objective,
+.task-instructions {
     font-size: 13px;
     color: var(--text-secondary);
 }
 
-.task-objective strong, .task-instructions strong {
+.task-objective strong,
+.task-instructions strong {
     color: var(--text-primary);
 }
 
@@ -406,7 +410,8 @@ table.dense-table {
     text-align: left;
 }
 
-table.dense-table th, table.dense-table td {
+table.dense-table th,
+table.dense-table td {
     padding: 10px 14px;
     border-bottom: 1px solid var(--border-subtle);
 }
@@ -586,12 +591,16 @@ table.dense-table tbody tr:hover {
 
 /* reduced-motion support */
 @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
+
+    *,
+    *::before,
+    *::after {
         animation-duration: 0.001ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.001ms !important;
         scroll-behavior: auto !important;
     }
+
     .blinking-alert {
         animation: none !important;
         opacity: 1 !important;
@@ -604,8 +613,10 @@ table.dense-table tbody tr:hover {
 
 body.fixture-difficult {
     background-color: #fcfcfc;
-    color: #b0b0b0; /* intentional low contrast */
-    font-size: 11px; /* intentional tiny font */
+    color: #b0b0b0;
+    /* intentional low contrast */
+    font-size: 11px;
+    /* intentional tiny font */
 }
 
 body.fixture-difficult .sidebar {
@@ -626,7 +637,8 @@ body.fixture-difficult .sidebar .nav-group-title {
 
 body.fixture-difficult .sidebar .nav-item {
     padding: 4px 8px;
-    color: #999999; /* intentional low contrast */
+    color: #999999;
+    /* intentional low contrast */
     font-size: 11px;
     border-radius: 0;
 }
@@ -688,7 +700,8 @@ body.fixture-difficult table.dense-table {
 body.fixture-difficult table.dense-table th,
 body.fixture-difficult table.dense-table td {
     border: 1px solid #dddddd;
-    padding: 2px 4px; /* cramped table padding */
+    padding: 2px 4px;
+    /* cramped table padding */
     font-size: 10px;
     color: #999999;
     white-space: nowrap;
@@ -762,7 +775,8 @@ body.fixture-difficult .form-group {
 
 body.fixture-difficult .form-group label {
     width: 140px;
-    color: #c0c0c0; /* low contrast */
+    color: #c0c0c0;
+    /* low contrast */
     font-size: 10px;
     font-weight: normal;
 }

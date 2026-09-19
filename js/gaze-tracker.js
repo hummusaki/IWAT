@@ -48,7 +48,7 @@ let videoFrameCallbackId = null;
 
 let smoothedGazeX = null;
 let smoothedGazeY = null;
-const ALPHA = 0.4; // EMA smoothing factor
+const ALPHA = 0.4; // ema smoothing factor
 
 // canvas and overlay references
 const aiCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
@@ -330,7 +330,7 @@ async function handleFrame(presentationTimestamp, frameAge, sessionId) {
         return;
     }
 
-    // FPS calculation
+    // fps calculation
     frameCount++;
     const now = performance.now();
     if (now - fpsTimer >= 1000) {
@@ -430,7 +430,7 @@ async function handleFrame(presentationTimestamp, frameAge, sessionId) {
 
         processedFramesCount++;
 
-        // Recheck result age at completion
+        // recheck result age at completion
         if (measuredFrameAge > MAX_FRAME_AGE_MS) {
             publishedSample = new GazeSample({
                 sessionId,
@@ -496,7 +496,7 @@ async function handleFrame(presentationTimestamp, frameAge, sessionId) {
             const face = faces[0];
             const kp = face.keypoints;
 
-            // Required landmarks: outer/inner/top/bottom for both eyes + both irises
+            // required landmarks: outer/inner/top/bottom for both eyes + both irises
             const requiredIndices = [33, 133, 145, 159, 263, 362, 374, 386, 468, 473];
             const hasRequiredLandmarks = kp && kp.length >= 474 && requiredIndices.every(idx => {
                 const pt = kp[idx];
@@ -780,7 +780,7 @@ export function disposeSession() {
     logToUI('Disposing gaze tracking session resources...', true, 'info');
     stopTrackingLoop();
 
-    // Dispose gaze regression model
+    // dispose gaze regression model
     disposeGazeModel();
 
     if (activeAdapter) {

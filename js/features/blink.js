@@ -76,7 +76,7 @@ export class BlinkDetector {
      * }}
      */
     update(leftKeypoints, rightKeypoints, timestamp = performance.now()) {
-        // Detect excessive time gaps between frames (e.g. background tab or camera stall)
+        // detect excessive time gaps between frames (e.g. background tab or camera stall)
         if (this.lastTimestamp > 0 && (timestamp - this.lastTimestamp) > this.maxAllowedGapMs) {
             this.resetInFlightBlink();
         }
@@ -133,7 +133,7 @@ export class BlinkDetector {
                 if (avgEAR < this.closedThreshold) {
                     this.state = BlinkState.CLOSED;
                 } else if (avgEAR >= this.openThreshold) {
-                    // Reopening occurred after a single observation closure (common at 10-15 Hz)
+                    // reopening occurred after a single observation closure (common at 10-15 Hz)
                     const duration = timestamp - this.blinkStartTime;
                     if (duration >= this.minDurationMs && duration <= this.maxDurationMs) {
                         this.totalBlinkCount++;

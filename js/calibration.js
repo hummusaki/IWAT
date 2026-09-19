@@ -155,8 +155,8 @@ export function computeFeatureSpread(x_train) {
         spreads.push({ dim, mean, variance, std, min, max, range: max - min });
     }
 
-    // X features: dim 0 (rx) and dim 2 (lx)
-    // Y features: dim 1 (ry) and dim 3 (ly)
+    // x features: dim 0 (rx) and dim 2 (lx)
+    // y features: dim 1 (ry) and dim 3 (ly)
     const varX = Math.max(spreads[0].variance, spreads[2].variance);
     const varY = Math.max(spreads[1].variance, spreads[3].variance);
     const hasSufficientSignal = varX >= CALIBRATION_CONFIG.varianceFloor && varY >= CALIBRATION_CONFIG.varianceFloor;
@@ -313,7 +313,7 @@ export async function startCalibration(options = {}) {
         overlay.style.display = 'flex';
         overlay.style.opacity = '1';
 
-        // Top control bar (reachable above overlay)
+        // top control bar (reachable above overlay)
         const topBar = document.createElement('div');
         topBar.className = 'calibration-top-bar';
         topBar.innerHTML = `
@@ -328,7 +328,7 @@ export async function startCalibration(options = {}) {
         `;
         overlay.appendChild(topBar);
 
-        // Center instructions / confirmation prompt card
+        // center instructions / confirmation prompt card
         const instructions = document.createElement('div');
         instructions.className = 'calibration-instructions';
         instructions.id = 'calib-instructions-card';
@@ -344,7 +344,7 @@ export async function startCalibration(options = {}) {
         `;
         overlay.appendChild(instructions);
 
-        // Fixation Target Dot (initially hidden until user clicks Start Calibration)
+        // fixation target dot (initially hidden until user clicks Start Calibration)
         const targetDot = document.createElement('div');
         targetDot.className = 'calibration-dot active-target waiting-click';
         targetDot.style.display = 'none';
@@ -469,7 +469,7 @@ export async function startCalibration(options = {}) {
             setupTarget(currentTargetIndex);
         }
 
-        // Control button listeners
+        // control button listeners
         const cancelBtn = topBar.querySelector('#calib-cancel-btn');
         if (cancelBtn) cancelBtn.addEventListener('click', cancel);
 
@@ -489,7 +489,7 @@ export async function startCalibration(options = {}) {
 
         activeCalibrationSession = { cancel, retry: retryCurrentTarget };
 
-        // Sampling loop (running at ~60 Hz)
+        // sampling loop (running at ~60 Hz)
         checkTimer = setInterval(() => {
             if (isCancelled || isWaitingForTrigger) return;
 
@@ -530,11 +530,11 @@ export async function startCalibration(options = {}) {
             const sample = getCurrentSample();
             if (!sample) return;
 
-            // Deduplication: strictly skip identical frame ID
+            // deduplication: strictly skip identical frame ID
             if (sample.frameId === lastCollectedFrameId) return;
             lastCollectedFrameId = sample.frameId;
 
-            // Quality checks: freshness, face presence, blink exclusion
+            // quality checks: freshness, face presence, blink exclusion
             if (!sample.valid || !isSampleFresh(sample, 250)) {
                 targetDot.style.borderColor = '#ff9f1a';
                 return;
@@ -550,7 +550,7 @@ export async function startCalibration(options = {}) {
                 dotProgress.textContent = `${targetSamples.length}/${config.minSamplesPerTarget}`;
             }
 
-            // Target completion check
+            // target completion check
             if (targetSamples.length >= config.minSamplesPerTarget && elapsed >= config.minTargetDurationMs) {
                 isCollecting = false;
                 targetDot.className = 'calibration-dot active-target completed';
@@ -564,7 +564,7 @@ export async function startCalibration(options = {}) {
                     stageBadge.style.color = '#000';
                 }
 
-                // Compute actual target normalized screen coordinates
+                // compute actual target normalized screen coordinates
                 const rect = targetDot.getBoundingClientRect();
                 const targetNormX = (rect.left + rect.width / 2) / window.innerWidth;
                 const targetNormY = (rect.top + rect.height / 2) / window.innerHeight;
@@ -583,11 +583,11 @@ export async function startCalibration(options = {}) {
                     if (currentTargetIndex + 1 < TARGET_GRID.length) {
                         setupTarget(currentTargetIndex + 1);
                     } else {
-                        // All 9 targets complete!
+                        // all 9 targets complete!
                         clearInterval(checkTimer);
                         checkTimer = null;
 
-                        // Diagnose two-axis variance before training
+                        // diagnose two-axis variance before training
                         const spread = computeFeatureSpread(allXTrain);
                         if (!spread.hasSufficientSignal) {
                             logToUI(`Calibration Diagnostic Warning: Pupil variance too low (varX: ${spread.varX.toFixed(6)}, varY: ${spread.varY.toFixed(6)}). Gaze vertical range may be compressed.`, true, 'warn');

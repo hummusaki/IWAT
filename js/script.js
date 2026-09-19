@@ -104,7 +104,7 @@ async function setupTracking() {
         } else {
             logToUI('Stored model could not be loaded. Retraining from calibration (live camera loop paused)...', true, 'warn');
             const [x_train, y_train, meta] = existingData;
-            // Run training decoupled from live loop to prevent WebGL GPU contention
+            // run training decoupled from live loop to prevent WebGL GPU contention
             await train(x_train, y_train, { targetIds: meta?.targetIds });
             initGazeDataExtract(videoElement, detector);
             isStartupInProgress = false;
@@ -238,7 +238,7 @@ async function triggerAdapterBenchmark() {
 
     setControlsDisabled(true);
 
-    // Pause production tracking loop and drain pending inference
+    // pause production tracking loop and drain pending inference
     stopTrackingLoop();
     await drainInference();
 
@@ -255,7 +255,7 @@ async function triggerAdapterBenchmark() {
         if (modalBody) modalBody.innerHTML = `<p style="color: #ff3b30;">Benchmark Error: ${err.message}</p>`;
     } finally {
         setControlsDisabled(false);
-        // Safely restore production tracking with active adapter
+        // safely restore production tracking with active adapter
         if (videoElement && getCameraState() === CameraState.STREAMING) {
             initGazeDataExtract(videoElement, getActiveAdapter());
         }
@@ -316,7 +316,7 @@ function renderBenchmarkReport(report, container) {
     }
 }
 
-// DOM setup
+// dom setup
 document.addEventListener('DOMContentLoaded', async () => {
     setLogContainer(document.getElementById('ai-logs'));
 

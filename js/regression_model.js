@@ -53,7 +53,7 @@ export async function loadStoredGazeModel() {
 
         const model = await tf.loadLayersModel(MODEL_STORAGE_KEY);
 
-        // Validate model architecture
+        // validate model architecture
         if (!model.inputs || model.inputs.length !== 1 || model.inputs[0].shape[1] !== 4) {
             throw new Error('Stored model has invalid input shape');
         }
@@ -61,7 +61,7 @@ export async function loadStoredGazeModel() {
             throw new Error('Stored model has invalid output shape');
         }
 
-        // Validate weights finiteness
+        // validate weights finiteness
         const weights = model.getWeights();
         for (const w of weights) {
             const vals = w.dataSync();
@@ -98,7 +98,7 @@ export function predictGaze(features) {
         if (!Number.isFinite(features[i])) return null;
     }
 
-    // Apply feature standardization if model preprocessing metadata is present
+    // apply feature standardization if model preprocessing metadata is present
     let normalizedFeatures = features;
     const prep = activeModelMetadata?.preprocessing;
     if (prep && Array.isArray(prep.means) && Array.isArray(prep.stds)) {
@@ -189,12 +189,12 @@ export async function train(x_train, y_train, options = {}) {
         (row[3] - means[3]) / stds[3]
     ]);
 
-    // 3. Grouped validation partition (keeping fixation bursts intact)
-    // Hold out balanced off-center targets: Target 1 (Top-Center: x=50%, y=10%) and Target 5 (Middle-Right: x=90%, y=50%).
-    // This holdout satisfies the fix plan's independent validation requirement:
-    // 1) Fit set retains all 4 outer boundary corners (0, 2, 6, 8), left edge (3), bottom edge (7), and center (4).
-    // 2) Validation set receives completely unseen observations from independent target bursts.
-    // 3) Symmetric off-center spatial displacement (dx=0.4 on Target 5, dy=0.4 on Target 1) ensures
+    // 3. grouped validation partition (keeping fixation bursts intact)
+    // hold out balanced off-center targets: target 1 (top-center: x=50%, y=10%) and target 5 (middle-right: x=90%, y=50%).
+    // this holdout satisfies the fix plan's independent validation requirement:
+    // 1) fit set retains all 4 outer boundary corners (0, 2, 6, 8), left edge (3), bottom edge (7), and center (4).
+    // 2) validation set receives completely unseen observations from independent target bursts.
+    // 3) symmetric off-center spatial displacement (dx=0.4 on target 5, dy=0.4 on target 1) ensures
     //    the center-predictor baseline has a valid non-zero reference (0.080) on both axes.
     const targetIds = options.targetIds;
     const fitIndices = [];
@@ -211,7 +211,7 @@ export async function train(x_train, y_train, options = {}) {
         }
     }
 
-    // Fallback if no targetIds or insufficient held-out samples
+    // fallback if no targetIds or insufficient held-out samples
     if (fitIndices.length === 0 || valIndices.length === 0) {
         fitIndices.length = 0;
         valIndices.length = 0;
@@ -225,7 +225,7 @@ export async function train(x_train, y_train, options = {}) {
     const x_val = valIndices.map(i => x_std[i]);
     const y_val = valIndices.map(i => y_train[i]);
 
-    // 4. Center-predictor baseline on independent held-out validation set
+    // 4. center-predictor baseline on independent held-out validation set
     let centerErrSumX = 0;
     let centerErrSumY = 0;
     for (let i = 0; i < y_val.length; i++) {
@@ -325,8 +325,8 @@ export async function train(x_train, y_train, options = {}) {
         const xImprovement = centerMseX > 0.01 ? (modelMseX < centerMseX) : (modelMseX < 0.05);
         const yImprovement = centerMseY > 0.01 ? (modelMseY < centerMseY) : (modelMseY < 0.05);
 
-        // Provisional coarse-gaze validation gate strictly per Phase 1 Fix Plan:
-        // Median error <= 10% diagonal, p95 <= 20% diagonal, lower held-out error than center on both axes
+        // provisional coarse-gaze validation gate strictly per phase 1 fix plan:
+        // median error <= 10% diagonal, p95 <= 20% diagonal, lower held-out error than center on both axes
         const maxMedianError = options.maxMedianErrorFraction ?? 0.10;
         const maxP95Error = options.maxP95ErrorFraction ?? 0.20;
 

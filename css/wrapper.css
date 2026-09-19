@@ -101,7 +101,7 @@ body {
     font-family: monospace;
 }
 
-/* Camera action controls */
+/* camera action controls */
 .camera-controls-container {
     padding: 8px 12px;
     background-color: #1f1f21;
@@ -152,7 +152,7 @@ body {
     cursor: pointer;
 }
 
-/* Diagnostics HUD */
+/* diagnostics HUD */
 .diagnostics-panel {
     padding: 10px 14px;
     background-color: #1e1e1e;
@@ -414,7 +414,7 @@ body {
     animation: none;
 }
 
-/* Sequential calibration overlay controls */
+/* sequential calibration overlay controls */
 .calibration-top-bar {
     position: absolute;
     top: 24px;
@@ -513,7 +513,7 @@ body {
     transition: background-color 0.15s ease;
 }
 
-/* Benchmark Modal */
+/* benchmark modal */
 .modal-overlay {
     position: fixed;
     top: 0;

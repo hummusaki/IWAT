@@ -11,21 +11,21 @@
 <body>
     <div class="wrapper-container">
 
-        <!-- Left 70%: Test Panel -->
+        <!-- left 70%: test panel -->
         <div class="test-panel">
             <iframe id="test-iframe" src="dashboard.html" frameborder="0"></iframe>
         </div>
 
-        <!-- Right 30%: Control Panel -->
+        <!-- right 30%: control panel -->
         <div class="control-panel">
-            <!-- Webcam Preview & Landmark Overlay -->
+            <!-- webcam preview & landmark overlay -->
             <div id="webcam-container" class="webcam-container">
                 <video id="webcam-video" autoplay playsinline></video>
                 <canvas id="webcam-overlay" class="webcam-overlay"></canvas>
                 <div class="overlay-text" id="camera-status-text">Camera: Initializing</div>
             </div>
 
-            <!-- Camera & Pipeline Action Controls -->
+            <!-- camera & pipeline action controls -->
             <div class="camera-controls-container">
                 <button id="retry-camera-btn" class="control-action-btn" style="display: none;">Retry Camera</button>
                 <button id="no-camera-btn" class="control-action-btn secondary" style="display: none;">No-Camera Mode</button>
@@ -37,7 +37,7 @@
                 </div>
             </div>
 
-            <!-- Live Diagnostics HUD -->
+            <!-- live diagnostics HUD -->
             <div class="diagnostics-panel">
                 <div class="diagnostics-header">
                     <h4>Telemetry Diagnostics</h4>
@@ -79,7 +79,7 @@
                 </div>
             </div>
 
-            <!-- Calibration & Benchmark Controls -->
+            <!-- calibration & benchmark controls -->
             <div class="project-info-container">
                 <div class="button-row">
                     <button id="reset-calibration-btn" class="reset-btn">Reset Calibration</button>
@@ -88,11 +88,11 @@
                 <p class="footnote">Learn more about <a href="https://github.com/hummusaki/IWAT" target="_blank" rel="noopener noreferrer">IWAT</a></p>
             </div>
 
-            <!-- AI Output Logs -->
+            <!-- ai output logs -->
             <div class="log-container">
                 <h3>System Logs</h3>
 
-                <!-- Training Progress Bar -->
+                <!-- training progress bar -->
                 <div id="training-progress-container" style="display: none; margin-bottom: 12px;">
                     <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px; color: #888;">
                         <span>Training Gaze Regression...</span>
@@ -109,7 +109,7 @@
         </div>
     </div>
 
-    <!-- Calibration Overlay -->
+    <!-- calibration overlay -->
     <div id="calibration-overlay" style="display: none;">
         <div class="calibration-instructions">
             <h2>Calibration Required</h2>
@@ -118,7 +118,7 @@
         <!-- dots will be generated here -->
     </div>
 
-    <!-- Benchmark Results Modal -->
+    <!-- benchmark results modal -->
     <div id="benchmark-modal" class="modal-overlay" style="display: none;">
         <div class="modal-card">
             <div class="modal-header">
@@ -132,15 +132,15 @@
         </div>
     </div>
 
-    <!-- Gaze Cursor -->
+    <!-- gaze cursor -->
     <div id="gaze-pointer"></div>
 
-    <!-- Pinned TensorFlow.js and MediaPipe Dependencies -->
+    <!-- pinned TensorFlow.js and MediaPipe dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"></script>
 
-    <!-- Wrapper Script (ML Engine) -->
+    <!-- wrapper script (ML engine) -->
     <script type="module" src="js/script.js"></script>
 </body>
 
