@@ -79,6 +79,28 @@
                 </div>
             </div>
 
+            <!-- adaptation bridge telemetry & mode triggers -->
+            <div class="diagnostics-panel" id="bridge-diagnostics-panel" style="margin-top: 12px;">
+                <div class="diagnostics-header">
+                    <h4>Dashboard Bridge</h4>
+                    <span id="bridge-status-badge" class="status-badge">Disconnected</span>
+                </div>
+                <div class="diagnostics-grid">
+                    <div class="diag-item">
+                        <span class="diag-label">Observed Mode:</span>
+                        <span id="bridge-observed-mode" class="diag-value">--</span>
+                    </div>
+                    <div class="diag-item">
+                        <span class="diag-label">Events Recv:</span>
+                        <span id="bridge-events-count" class="diag-value">0</span>
+                    </div>
+                </div>
+                <div class="button-row" style="margin-top: 8px;">
+                    <button id="bridge-set-standard-btn" class="control-action-btn secondary" style="font-size: 11px; padding: 4px 8px;">Standard Mode</button>
+                    <button id="bridge-set-focused-btn" class="control-action-btn secondary" style="font-size: 11px; padding: 4px 8px;">Focused Mode</button>
+                </div>
+            </div>
+
             <!-- calibration & benchmark controls -->
             <div class="project-info-container">
                 <div class="button-row">
