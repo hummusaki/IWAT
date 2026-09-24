@@ -1,5 +1,6 @@
 // dashboard.js - functional and accessible dashboard controller with deterministic tasks
 import { createTaskManager, TASK_DEFINITIONS } from './dashboard-task.js';
+import { createDashboardBridge } from './adaptation/bridge.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // parse url parameters to detect explicitly selected research fixture and adaptation mode
@@ -753,4 +754,32 @@ document.addEventListener('DOMContentLoaded', () => {
             renderStepGuidance();
         }
     });
+
+    // initialize adaptation bridge for parent-iframe communication
+    let dashboardBridge = null;
+    try {
+        const originParam = urlParams.get('parentOrigin') || urlParams.get('allowedOrigin');
+        dashboardBridge = createDashboardBridge({
+            taskManager,
+            targetOrigin: originParam || (window.location && window.location.origin && window.location.origin !== 'null' ? window.location.origin : undefined),
+            allowedOrigin: originParam || (window.location && window.location.origin && window.location.origin !== 'null' ? window.location.origin : undefined),
+            onModeChangeRequested: (targetMode, reason) => {
+                const changed = taskManager.setMode(targetMode, reason);
+                if (changed) {
+                    applyMode(taskManager.getMode(), reason);
+                    showFeedback(
+                        targetMode === 'focused'
+                            ? 'Focused mode activated via adaptation bridge.'
+                            : 'Standard mode restored via adaptation bridge.',
+                        'info'
+                    );
+                }
+                return changed;
+            }
+        });
+        dashboardBridge.init();
+        window.dashboardBridge = dashboardBridge;
+    } catch (err) {
+        // standalone mode or origin restriction fallback
+    }
 });
