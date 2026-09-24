@@ -293,6 +293,9 @@
                 throw new Error('Hint box did not expand on help button click');
             }
 
+            // wait briefly to ensure measurable duration in automated browser environments
+            await new Promise(r => setTimeout(r, 20));
+
             // 3. correct choice: overloaded server srv-cluster-a-02 restart
             const correctBtn = doc.querySelector('tr[data-instance="srv-cluster-a-02"] .btn-primary');
             correctBtn.click();
@@ -729,8 +732,8 @@
             return `Mid-task switching verified: Errors, corrections, start time, and completion metrics preserved with zero loss across standard/focused adaptation modes.`;
         });
 
-        // test 9: parent-iframe adaptation bridge handshake and readiness
-        registerTest('9. Parent–Iframe Adaptation Bridge Handshake & Readiness', async (doc, win) => {
+        // test 12: parent-iframe adaptation bridge handshake and readiness
+        registerTest('12. Parent–Iframe Adaptation Bridge Handshake & Readiness', async (doc, win) => {
             // initialize parent bridge connected to the runner iframe
             const parentBridge = createParentBridge({
                 iframe: () => frame,
@@ -764,8 +767,8 @@
             return `Handshake verified: Bi-directional connection established. Session token: ${activeToken}, initial observed mode: ${observedMode}.`;
         });
 
-        // test 10: parent mode change request and authoritative UI adaptation
-        registerTest('10. Parent Mode Request & Authoritative Dashboard Adaptation', async (doc, win) => {
+        // test 13: parent mode change request and authoritative UI adaptation
+        registerTest('13. Parent Mode Request & Authoritative Dashboard Adaptation', async (doc, win) => {
             const parentBridge = createParentBridge({
                 iframe: () => frame,
                 targetOrigin: window.location.origin,
@@ -808,8 +811,8 @@
             return `Parent mode control verified: Successfully transitioned dashboard to focused mode and back to standard with correlated acknowledgments.`;
         });
 
-        // test 11: idempotent duplicate mode requests
-        registerTest('11. Idempotent Duplicate Mode Requests (Zero Duplicate Transitions)', async (doc, win) => {
+        // test 14: idempotent duplicate mode requests
+        registerTest('14. Idempotent Duplicate Mode Requests (Zero Duplicate Transitions)', async (doc, win) => {
             const parentBridge = createParentBridge({
                 iframe: () => frame,
                 targetOrigin: window.location.origin,
@@ -840,8 +843,8 @@
             return `Idempotency verified: Duplicate mode requests return 'noop' acknowledgment and generate zero duplicate telemetry events or transitions.`;
         });
 
-        // test 12: real-time task telemetry forwarding
-        registerTest('12. Real-time Task Telemetry Forwarding to Parent', async (doc, win) => {
+        // test 15: real-time task telemetry forwarding
+        registerTest('15. Real-time Task Telemetry Forwarding to Parent', async (doc, win) => {
             const forwardedEvents = [];
             const parentBridge = createParentBridge({
                 iframe: () => frame,
@@ -857,14 +860,29 @@
                 await new Promise(r => setTimeout(r, 20));
             }
 
+            // ensure server triage task is active and in clean idle state
+            if (win.dashboardTaskManager) {
+                win.dashboardTaskManager.resetTask('task-server-triage');
+                win.dashboardTaskManager.setActiveTask('task-server-triage');
+            }
+            const taskSelect = doc.getElementById('task-select');
+            if (taskSelect && taskSelect.value !== 'task-server-triage') {
+                taskSelect.value = 'task-server-triage';
+                taskSelect.dispatchEvent(new Event('change'));
+            }
+
             const initialCount = forwardedEvents.length;
 
             // interact with child iframe by clicking an action button
             const wrongBtn = doc.querySelector('tr[data-instance="srv-cluster-a-01"] .btn-primary');
             wrongBtn.click();
 
-            // wait briefly for event propagation
-            await new Promise(r => setTimeout(r, 100));
+            // wait for event propagation across bridge with polling
+            let waitAttempts = 0;
+            while (forwardedEvents.length === initialCount && waitAttempts < 20) {
+                await new Promise(r => setTimeout(r, 25));
+                waitAttempts++;
+            }
 
             const newEvents = forwardedEvents.slice(initialCount);
             if (newEvents.length === 0) {
@@ -880,8 +898,8 @@
             return `Telemetry forwarding verified: Received ${newEvents.length} event(s) across bridge; latest event '${lastEvt.eventType}' has valid monotonic timestamp and ID.`;
         });
 
-        // test 13: security: untrusted origin and malformed message rejection
-        registerTest('13. Security: Untrusted Origin and Malformed Message Rejection', async (doc, win) => {
+        // test 16: security: untrusted origin and malformed message rejection
+        registerTest('16. Security: Untrusted Origin and Malformed Message Rejection', async (doc, win) => {
             const initialMode = win.dashboardTaskManager ? win.dashboardTaskManager.getMode() : 'standard';
 
             // post message with invalid target origin
@@ -931,8 +949,8 @@
             return `Security verified: Untrusted origins and unsupported protocol versions are rejected with zero effect on dashboard state.`;
         });
 
-        // test 14: iframe reload recovery and session invalidation
-        registerTest('14. Iframe Reload Recovery & Session Invalidation', async (doc, win) => {
+        // test 17: iframe reload recovery and session invalidation
+        registerTest('17. Iframe Reload Recovery & Session Invalidation', async (doc, win) => {
             const parentBridge = createParentBridge({
                 iframe: () => frame,
                 targetOrigin: window.location.origin,
