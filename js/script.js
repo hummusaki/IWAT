@@ -6,6 +6,7 @@ import { initDetector, initGazeDataExtract, stopTrackingLoop, drainInference, ge
 import { startCalibration, showCalibration, checkExistingCalibration, checkExistingModel, clearAllCalibrationStorage } from './calibration.js';
 import { train, loadStoredGazeModel, gazeModel } from './regression_model.js';
 import { AdapterBenchmarkRunner } from './tracking/adapter-benchmark.js';
+import { createParentBridge } from './adaptation/bridge.js';
 
 let videoElement = null;
 let telemetryInterval = null;
@@ -387,8 +388,74 @@ document.addEventListener('DOMContentLoaded', async () => {
     // start diagnostics HUD
     startTelemetryLoop();
 
+    // initialize parent adaptation bridge
+    const bridgeStatusBadge = document.getElementById('bridge-status-badge');
+    const bridgeObservedMode = document.getElementById('bridge-observed-mode');
+    const bridgeEventsCount = document.getElementById('bridge-events-count');
+    const bridgeSetStandardBtn = document.getElementById('bridge-set-standard-btn');
+    const bridgeSetFocusedBtn = document.getElementById('bridge-set-focused-btn');
+
+    let parentBridge = null;
+    try {
+        parentBridge = createParentBridge({
+            iframe: () => document.getElementById('test-iframe'),
+            onTaskEvent: (event) => {
+                if (bridgeEventsCount && parentBridge) {
+                    bridgeEventsCount.textContent = String(parentBridge.getReceivedEvents().length);
+                }
+                logToUI(`[Bridge] Task event received: ${event.eventType} (${event.taskId || 'general'})`, false, 'info');
+            },
+            onModeChanged: ({ mode, reason }) => {
+                if (bridgeObservedMode) {
+                    bridgeObservedMode.textContent = mode;
+                }
+                logToUI(`[Bridge] Observed mode changed to '${mode}' (${reason})`, false, 'info');
+            },
+            onHandshake: (payload) => {
+                if (bridgeStatusBadge) {
+                    bridgeStatusBadge.textContent = 'Connected';
+                    bridgeStatusBadge.className = 'status-badge active';
+                }
+                if (bridgeObservedMode) {
+                    bridgeObservedMode.textContent = payload.currentMode || 'standard';
+                }
+                logToUI(`[Bridge] Connected to dashboard iframe (mode: ${payload.currentMode || 'standard'})`, false, 'success');
+            }
+        });
+
+        parentBridge.init();
+        window.parentBridge = parentBridge;
+    } catch (bridgeErr) {
+        logToUI(`[Bridge] Initialization warning: ${bridgeErr.message}`, false, 'warn');
+    }
+
+    if (bridgeSetStandardBtn && parentBridge) {
+        bridgeSetStandardBtn.addEventListener('click', async () => {
+            try {
+                const res = await parentBridge.sendSetModeRequest('standard', 'parent_button');
+                logToUI(`[Bridge] Set standard: ${res.status} (${res.appliedMode})`, false, 'success');
+            } catch (err) {
+                logToUI(`[Bridge] Error setting standard mode: ${err.message}`, false, 'error');
+            }
+        });
+    }
+
+    if (bridgeSetFocusedBtn && parentBridge) {
+        bridgeSetFocusedBtn.addEventListener('click', async () => {
+            try {
+                const res = await parentBridge.sendSetModeRequest('focused', 'parent_button');
+                logToUI(`[Bridge] Set focused: ${res.status} (${res.appliedMode})`, false, 'success');
+            } catch (err) {
+                logToUI(`[Bridge] Error setting focused mode: ${err.message}`, false, 'error');
+            }
+        });
+    }
+
     // clean session on window unload
     window.addEventListener('beforeunload', () => {
+        if (parentBridge) {
+            parentBridge.destroy();
+        }
         disposeSession();
         stopCamera(videoElement);
     });
