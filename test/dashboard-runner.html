@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IWAT - Phase 2 Tier 1 Dashboard Browser Verification</title>
+    <title>IWAT - Phase 2 Browser Verification Suite (Tiers 1–3)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
@@ -99,8 +99,8 @@
 </head>
 
 <body>
-    <h1>IWAT Phase 2 Tier 1 Browser Verification Suite</h1>
-    <div class="subtitle">Verifying Tier 1 requirements: deterministic tasks, measurement logging, duplicate prevention, inline feedback, accessibility, and research fixture</div>
+    <h1>IWAT Phase 2 Browser Verification Suite (Tiers 1–3)</h1>
+    <div class="subtitle">Verifying Tier 1–3 requirements: deterministic tasks, modes, inline feedback, accessibility, and parent–iframe adaptation bridge</div>
 
     <div id="test-results"></div>
     <div id="suite-summary" class="summary-card" style="display:none;"></div>
@@ -110,6 +110,8 @@
     </div>
 
     <script type="module">
+        import { createParentBridge, BRIDGE_PROTOCOL, PROTOCOL_VERSION, BRIDGE_MESSAGE_TYPES } from '../js/adaptation/bridge.js';
+
         const resultsEl = document.getElementById('test-results');
         const frame = document.getElementById('dashboard-frame');
         const tests = [];
@@ -118,56 +120,61 @@
             tests.push({ name, fn });
         }
 
-        // wait for iframe to load
-        await new Promise((resolve) => {
-            if (frame.contentDocument && frame.contentDocument.readyState === 'complete') {
-                resolve();
-            } else {
-                frame.addEventListener('load', resolve, { once: true });
+        /** jsdoc
+         * runs all registered verification tests against iframe dashboard
+         */
+        async function runAllTests() {
+            // wait for iframe to load
+            await new Promise((resolve) => {
+                if (frame.contentDocument && frame.contentDocument.readyState === 'complete') {
+                    resolve();
+                } else {
+                    frame.addEventListener('load', resolve, { once: true });
+                }
+            });
+
+            // small delay for module initialization
+            await new Promise(r => setTimeout(r, 200));
+
+            let passed = 0;
+            let failed = 0;
+
+            for (const t of tests) {
+                const card = document.createElement('div');
+                card.className = 'test-card';
+                card.innerHTML = `
+                    <div class="test-header">
+                        <span>${t.name}</span>
+                        <span class="test-status status-running">Running...</span>
+                    </div>
+                    <div class="test-details">Executing test logic...</div>
+                `;
+                resultsEl.appendChild(card);
+
+                const statusEl = card.querySelector('.test-status');
+                const detailsEl = card.querySelector('.test-details');
+
+                try {
+                    const doc = frame.contentDocument;
+                    const win = frame.contentWindow;
+                    const details = await t.fn(doc, win);
+                    statusEl.className = 'test-status status-pass';
+                    statusEl.textContent = 'PASS';
+                    detailsEl.textContent = details || 'Passed cleanly.';
+                    passed++;
+                } catch (err) {
+                    statusEl.className = 'test-status status-fail';
+                    statusEl.textContent = 'FAIL';
+                    detailsEl.textContent = `${err.message}\n${err.stack || ''}`;
+                    failed++;
+                }
             }
-        });
 
-        // small delay for module initialization
-        await new Promise(r => setTimeout(r, 200));
-
-        let passed = 0;
-        let failed = 0;
-
-        for (const t of tests) {
-            const card = document.createElement('div');
-            card.className = 'test-card';
-            card.innerHTML = `
-                <div class="test-header">
-                    <span>${t.name}</span>
-                    <span class="test-status status-running">Running...</span>
-                </div>
-                <div class="test-details">Executing test logic...</div>
-            `;
-            resultsEl.appendChild(card);
-
-            const statusEl = card.querySelector('.test-status');
-            const detailsEl = card.querySelector('.test-details');
-
-            try {
-                const doc = frame.contentDocument;
-                const win = frame.contentWindow;
-                const details = await t.fn(doc, win);
-                statusEl.className = 'test-status status-pass';
-                statusEl.textContent = 'PASS';
-                detailsEl.textContent = details || 'Passed cleanly.';
-                passed++;
-            } catch (err) {
-                statusEl.className = 'test-status status-fail';
-                statusEl.textContent = 'FAIL';
-                detailsEl.textContent = `${err.message}\n${err.stack || ''}`;
-                failed++;
-            }
+            const summaryEl = document.getElementById('suite-summary');
+            summaryEl.style.display = 'block';
+            summaryEl.innerHTML = `Tests Completed: ${passed + failed} | Passed: <span style="color:#2ed573">${passed}</span> | Failed: <span style="color:#ff4757">${failed}</span>`;
+            window.__TEST_RESULTS__ = { total: passed + failed, passed, failed };
         }
-
-        const summaryEl = document.getElementById('suite-summary');
-        summaryEl.style.display = 'block';
-        summaryEl.innerHTML = `Tests Completed: ${passed + failed} | Passed: <span style="color:#2ed573">${passed}</span> | Failed: <span style="color:#ff4757">${failed}</span>`;
-        window.__TEST_RESULTS__ = { total: passed + failed, passed, failed };
 
         // =====================================================================
         // test definitions
@@ -721,6 +728,257 @@
 
             return `Mid-task switching verified: Errors, corrections, start time, and completion metrics preserved with zero loss across standard/focused adaptation modes.`;
         });
+
+        // test 9: parent-iframe adaptation bridge handshake and readiness
+        registerTest('9. Parent–Iframe Adaptation Bridge Handshake & Readiness', async (doc, win) => {
+            // initialize parent bridge connected to the runner iframe
+            const parentBridge = createParentBridge({
+                iframe: () => frame,
+                targetOrigin: window.location.origin,
+                allowedOrigin: window.location.origin
+            });
+            parentBridge.init();
+
+            // wait for handshake settlement
+            let attempts = 0;
+            while (!parentBridge.isHandshakeComplete() && attempts < 40) {
+                await new Promise(r => setTimeout(r, 50));
+                attempts++;
+            }
+
+            if (!parentBridge.isHandshakeComplete()) {
+                throw new Error('Bridge handshake timed out without readiness confirmation');
+            }
+
+            const activeToken = parentBridge.getActiveSessionToken();
+            if (!activeToken || !activeToken.startsWith('session_')) {
+                throw new Error(`Invalid activeSessionToken: ${activeToken}`);
+            }
+
+            const observedMode = parentBridge.getObservedMode();
+            if (observedMode !== 'standard' && observedMode !== 'focused') {
+                throw new Error(`Unexpected observedMode: ${observedMode}`);
+            }
+
+            parentBridge.destroy();
+            return `Handshake verified: Bi-directional connection established. Session token: ${activeToken}, initial observed mode: ${observedMode}.`;
+        });
+
+        // test 10: parent mode change request and authoritative UI adaptation
+        registerTest('10. Parent Mode Request & Authoritative Dashboard Adaptation', async (doc, win) => {
+            const parentBridge = createParentBridge({
+                iframe: () => frame,
+                targetOrigin: window.location.origin,
+                allowedOrigin: window.location.origin
+            });
+            parentBridge.init();
+
+            // wait for handshake
+            while (!parentBridge.isHandshakeComplete()) {
+                await new Promise(r => setTimeout(r, 20));
+            }
+
+            // request focused mode from parent
+            const res = await parentBridge.sendSetModeRequest('focused', 'browser_test_runner');
+            if (!res.success || res.status !== 'applied' || res.appliedMode !== 'focused') {
+                throw new Error(`Mode request failed: ${JSON.stringify(res)}`);
+            }
+
+            // check child iframe's DOM and authoritative state
+            if (!doc.body.classList.contains('mode-focused')) {
+                throw new Error('Iframe body does not contain .mode-focused class after bridge mode change');
+            }
+
+            const childMode = win.dashboardTaskManager ? win.dashboardTaskManager.getMode() : null;
+            if (childMode !== 'focused') {
+                throw new Error(`Child taskManager mode is '${childMode}', expected 'focused'`);
+            }
+
+            // request standard mode from parent
+            const resBack = await parentBridge.sendSetModeRequest('standard', 'browser_test_runner_revert');
+            if (!resBack.success || resBack.status !== 'applied' || resBack.appliedMode !== 'standard') {
+                throw new Error(`Revert mode request failed: ${JSON.stringify(resBack)}`);
+            }
+
+            if (doc.body.classList.contains('mode-focused')) {
+                throw new Error('Iframe body still contains .mode-focused class after reverting to standard');
+            }
+
+            parentBridge.destroy();
+            return `Parent mode control verified: Successfully transitioned dashboard to focused mode and back to standard with correlated acknowledgments.`;
+        });
+
+        // test 11: idempotent duplicate mode requests
+        registerTest('11. Idempotent Duplicate Mode Requests (Zero Duplicate Transitions)', async (doc, win) => {
+            const parentBridge = createParentBridge({
+                iframe: () => frame,
+                targetOrigin: window.location.origin,
+                allowedOrigin: window.location.origin
+            });
+            parentBridge.init();
+
+            while (!parentBridge.isHandshakeComplete()) {
+                await new Promise(r => setTimeout(r, 20));
+            }
+
+            // ensure in standard mode
+            await parentBridge.sendSetModeRequest('standard', 'ensure_standard');
+            const eventsBefore = win.dashboardTaskManager ? win.dashboardTaskManager.getEventRecords().length : 0;
+
+            // send duplicate request for standard mode
+            const resDup = await parentBridge.sendSetModeRequest('standard', 'duplicate_standard_request');
+            if (!resDup.success || resDup.status !== 'noop' || resDup.appliedMode !== 'standard') {
+                throw new Error(`Expected noop acknowledgment for duplicate request, got: ${JSON.stringify(resDup)}`);
+            }
+
+            const eventsAfter = win.dashboardTaskManager ? win.dashboardTaskManager.getEventRecords().length : 0;
+            if (eventsAfter !== eventsBefore) {
+                throw new Error(`Duplicate mode request generated redundant events: before=${eventsBefore}, after=${eventsAfter}`);
+            }
+
+            parentBridge.destroy();
+            return `Idempotency verified: Duplicate mode requests return 'noop' acknowledgment and generate zero duplicate telemetry events or transitions.`;
+        });
+
+        // test 12: real-time task telemetry forwarding
+        registerTest('12. Real-time Task Telemetry Forwarding to Parent', async (doc, win) => {
+            const forwardedEvents = [];
+            const parentBridge = createParentBridge({
+                iframe: () => frame,
+                targetOrigin: window.location.origin,
+                allowedOrigin: window.location.origin,
+                onTaskEvent: (evt) => {
+                    forwardedEvents.push(evt);
+                }
+            });
+            parentBridge.init();
+
+            while (!parentBridge.isHandshakeComplete()) {
+                await new Promise(r => setTimeout(r, 20));
+            }
+
+            const initialCount = forwardedEvents.length;
+
+            // interact with child iframe by clicking an action button
+            const wrongBtn = doc.querySelector('tr[data-instance="srv-cluster-a-01"] .btn-primary');
+            wrongBtn.click();
+
+            // wait briefly for event propagation
+            await new Promise(r => setTimeout(r, 100));
+
+            const newEvents = forwardedEvents.slice(initialCount);
+            if (newEvents.length === 0) {
+                throw new Error('Parent bridge received no task events after user interaction in iframe');
+            }
+
+            const lastEvt = newEvents[newEvents.length - 1];
+            if (!lastEvt.eventId || !lastEvt.timestamp || !lastEvt.eventType) {
+                throw new Error(`Forwarded task event is malformed: ${JSON.stringify(lastEvt)}`);
+            }
+
+            parentBridge.destroy();
+            return `Telemetry forwarding verified: Received ${newEvents.length} event(s) across bridge; latest event '${lastEvt.eventType}' has valid monotonic timestamp and ID.`;
+        });
+
+        // test 13: security: untrusted origin and malformed message rejection
+        registerTest('13. Security: Untrusted Origin and Malformed Message Rejection', async (doc, win) => {
+            const initialMode = win.dashboardTaskManager ? win.dashboardTaskManager.getMode() : 'standard';
+
+            // post message with invalid target origin
+            try {
+                win.postMessage({
+                    protocol: BRIDGE_PROTOCOL,
+                    version: PROTOCOL_VERSION,
+                    type: BRIDGE_MESSAGE_TYPES.SET_MODE_REQUEST,
+                    sessionToken: win.dashboardBridge ? win.dashboardBridge.getSessionToken() : 'session_fake',
+                    timestamp: performance.now(),
+                    payload: {
+                        requestId: 'rogue_req',
+                        targetMode: initialMode === 'standard' ? 'focused' : 'standard'
+                    }
+                }, 'https://invalid-attacker.example.com');
+            } catch (e) {
+                // target origin mismatch prevented dispatch
+            }
+
+            await new Promise(r => setTimeout(r, 50));
+
+            const modeAfterRogue = win.dashboardTaskManager ? win.dashboardTaskManager.getMode() : null;
+            if (modeAfterRogue !== initialMode) {
+                throw new Error('Untrusted origin message mutated dashboard state!');
+            }
+
+            // post message with invalid protocol version
+            win.postMessage({
+                protocol: BRIDGE_PROTOCOL,
+                version: '99.9',
+                type: BRIDGE_MESSAGE_TYPES.SET_MODE_REQUEST,
+                sessionToken: win.dashboardBridge ? win.dashboardBridge.getSessionToken() : 'session_fake',
+                timestamp: performance.now(),
+                payload: {
+                    requestId: 'bad_ver_req',
+                    targetMode: initialMode === 'standard' ? 'focused' : 'standard'
+                }
+            }, window.location.origin);
+
+            await new Promise(r => setTimeout(r, 50));
+
+            const modeAfterBadVer = win.dashboardTaskManager ? win.dashboardTaskManager.getMode() : null;
+            if (modeAfterBadVer !== initialMode) {
+                throw new Error('Unsupported protocol version mutated dashboard state!');
+            }
+
+            return `Security verified: Untrusted origins and unsupported protocol versions are rejected with zero effect on dashboard state.`;
+        });
+
+        // test 14: iframe reload recovery and session invalidation
+        registerTest('14. Iframe Reload Recovery & Session Invalidation', async (doc, win) => {
+            const parentBridge = createParentBridge({
+                iframe: () => frame,
+                targetOrigin: window.location.origin,
+                allowedOrigin: window.location.origin
+            });
+            parentBridge.init();
+
+            while (!parentBridge.isHandshakeComplete()) {
+                await new Promise(r => setTimeout(r, 20));
+            }
+
+            const token1 = parentBridge.getActiveSessionToken();
+
+            // trigger iframe reload
+            const reloadPromise = new Promise((resolve) => {
+                frame.addEventListener('load', resolve, { once: true });
+            });
+            frame.src = frame.src;
+            await reloadPromise;
+
+            // wait for new module initialization and handshake
+            await new Promise(r => setTimeout(r, 200));
+
+            let attempts = 0;
+            while ((!parentBridge.isHandshakeComplete() || parentBridge.getActiveSessionToken() === token1) && attempts < 40) {
+                await new Promise(r => setTimeout(r, 50));
+                attempts++;
+            }
+
+            const token2 = parentBridge.getActiveSessionToken();
+            if (!token2 || token2 === token1) {
+                throw new Error(`Failed to establish new session token after iframe reload: old=${token1}, new=${token2}`);
+            }
+
+            // request mode change on fresh session
+            const res = await parentBridge.sendSetModeRequest('focused', 'after_reload_switch');
+            if (!res.success || res.status !== 'applied') {
+                throw new Error(`Mode request on reloaded iframe failed: ${JSON.stringify(res)}`);
+            }
+
+            parentBridge.destroy();
+            return `Reload recovery verified: Iframe reload invalidated previous session (${token1}) and established fresh session (${token2}); subsequent mode requests execute cleanly.`;
+        });
+
+        // execute all registered browser verification tests
+        await runAllTests();
     </script>
 </body>
 

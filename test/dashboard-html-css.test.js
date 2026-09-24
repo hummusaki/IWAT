@@ -126,3 +126,29 @@ test('css/style.css defines focused mode adaptation rules and task step styles',
     assert.ok(cssContent.includes('.secondary-toggle-btn'), 'missing .secondary-toggle-btn rule');
 });
 
+test('index.html defines iframe and bridge telemetry HUD elements', () => {
+    const indexPath = join(process.cwd(), 'index.html');
+    const indexContent = readFileSync(indexPath, 'utf8');
+
+    assert.ok(indexContent.includes('id="test-iframe"'), 'missing test-iframe element');
+    assert.ok(indexContent.includes('id="bridge-status-badge"'), 'missing bridge-status-badge element');
+    assert.ok(indexContent.includes('id="bridge-observed-mode"'), 'missing bridge-observed-mode element');
+    assert.ok(indexContent.includes('id="bridge-events-count"'), 'missing bridge-events-count element');
+    assert.ok(indexContent.includes('id="bridge-set-standard-btn"'), 'missing bridge-set-standard-btn element');
+    assert.ok(indexContent.includes('id="bridge-set-focused-btn"'), 'missing bridge-set-focused-btn element');
+});
+
+test('js/script.js and js/dashboard.js integrate bridge controllers', () => {
+    const scriptPath = join(process.cwd(), 'js', 'script.js');
+    const scriptContent = readFileSync(scriptPath, 'utf8');
+
+    // verify script.js imports and exposes parent bridge
+    assert.ok(scriptContent.includes("import { createParentBridge } from './adaptation/bridge.js';"), 'script.js missing createParentBridge import');
+    assert.ok(scriptContent.includes('window.parentBridge = parentBridge;'), 'script.js missing window.parentBridge assignment');
+
+    // verify dashboard.js imports and exposes child bridge
+    assert.ok(jsContent.includes("import { createDashboardBridge } from './adaptation/bridge.js';"), 'dashboard.js missing createDashboardBridge import');
+    assert.ok(jsContent.includes('window.dashboardBridge = dashboardBridge;'), 'dashboard.js missing window.dashboardBridge assignment');
+});
+
+
