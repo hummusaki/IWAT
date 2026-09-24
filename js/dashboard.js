@@ -608,27 +608,35 @@ document.addEventListener('DOMContentLoaded', () => {
                         );
                     }
                 } else if (instanceId === 'srv-cluster-a-02' && action === 'isolate') {
-                    taskManager.recordIncorrectChoice('task-server-triage', {
+                    const result = taskManager.recordIncorrectChoice('task-server-triage', {
                         instanceId,
                         action,
                         reason: 'wrong_action_on_target_server'
                     });
-                    showFeedback(
-                        'Incorrect action: Isolate was triggered on srv-cluster-a-02. The task requires restarting the overloaded server.',
-                        'error',
-                        7000
-                    );
+                    if (result && result.alreadyCompleted) {
+                        showFeedback('Task already completed. Reset task if you wish to run it again.', 'info');
+                    } else {
+                        showFeedback(
+                            'Incorrect action: Isolate was triggered on srv-cluster-a-02. The task requires restarting the overloaded server.',
+                            'error',
+                            7000
+                        );
+                    }
                 } else {
-                    taskManager.recordIncorrectChoice('task-server-triage', {
+                    const result = taskManager.recordIncorrectChoice('task-server-triage', {
                         instanceId,
                         action,
                         reason: 'incorrect_server_selected'
                     });
-                    showFeedback(
-                        `Incorrect choice: Server ${instanceId} is not the overloaded node. Check CPU % in the utilization matrix.`,
-                        'error',
-                        7000
-                    );
+                    if (result && result.alreadyCompleted) {
+                        showFeedback('Task already completed. Reset task if you wish to run it again.', 'info');
+                    } else {
+                        showFeedback(
+                            `Incorrect choice: Server ${instanceId} is not the overloaded node. Check CPU % in the utilization matrix.`,
+                            'error',
+                            7000
+                        );
+                    }
                 }
             } else {
                 // generic table action feedback
